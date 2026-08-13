@@ -1,0 +1,3782 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VECTOR PULSE — juego de ritmo vectorial procedural</title>
+<meta name="description" content="Convierte cualquier canción de tu dispositivo en una pista vectorial jugable. El análisis ocurre en tu navegador; el audio nunca sale de tu equipo.">
+<style>
+/* =========================================================================
+   VECTOR PULSE — hoja de estilos
+   Lenguaje visual: panel de instrumentos / trazador vectorial.
+   Una sola familia monoespaciada diferenciada por peso y tracking, marcos
+   de esquina en lugar de bordes completos, y acentos de color reservados
+   exclusivamente para codificar las cuatro acciones.
+   ========================================================================= */
+
+:root {
+  --bg: #05070c;
+  --panel: #080c14;
+  --panel-2: #0b111c;
+  --line: #16202f;
+  --line-2: #22344b;
+  --ink: #e6f1ff;
+  --dim: #6f89a8;
+  --dimmer: #43587180;
+
+  --a1: #4fe0ff; /* desvío izquierda */
+  --a2: #ffc96b; /* desvío derecha  */
+  --a3: #7dffc0; /* impulso         */
+  --a4: #ff6fd8; /* fase            */
+  --red: #ff3b5c;
+
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --display: "Bahnschrift", "DIN Alternate", "Franklin Gothic Medium", "Arial Narrow", var(--mono);
+
+  --gap: 14px;
+  --radius: 2px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100dvh;
+  background-image:
+    radial-gradient(120% 80% at 50% 0%, #0a1421 0%, #05070c 60%),
+    repeating-linear-gradient(0deg, transparent 0 3px, rgba(255, 255, 255, .012) 3px 4px);
+}
+
+#app {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: var(--gap);
+  padding: var(--gap);
+  max-width: 1720px;
+  margin: 0 auto;
+}
+
+/* ------------------------------------------------------------- cabecera */
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.wordmark {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(22px, 3.2vw, 34px);
+  font-weight: 700;
+  letter-spacing: .32em;
+  line-height: 1;
+}
+.wordmark em {
+  font-style: normal;
+  color: transparent;
+  -webkit-text-stroke: 1px var(--a1);
+  text-stroke: 1px var(--a1);
+}
+
+.tagline {
+  margin: 0;
+  color: var(--dim);
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.state-chip {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.state-chip b { color: var(--a1); letter-spacing: .12em; }
+
+/* ---------------------------------------------------------------- bahías */
+.bays {
+  display: grid;
+  grid-template-columns: 310px minmax(0, 1fr) 268px;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+.bay {
+  position: relative;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  min-height: 0;
+}
+.bay--stage { grid-template-columns: minmax(0, 1fr); background: none; }
+
+/* Marcos de esquina: sustituyen al borde continuo (referencia de trazador) */
+.bay::before,
+.bay::after,
+.bay-body::before,
+.bay-body::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--line-2);
+  pointer-events: none;
+}
+.bay::before { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.bay::after { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+.bay-body::before { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+.bay-body::after { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+.bay--stage::before, .bay--stage::after { display: none; }
+
+.bay-rail {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  letter-spacing: .42em;
+  color: var(--dimmer);
+  border-right: 1px solid var(--line);
+}
+
+.bay-body {
+  position: relative;
+  padding: 16px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------- tipografía */
+.field-key {
+  display: block;
+  font-size: 9px;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.field-sub { font-size: 10px; color: var(--dimmer); letter-spacing: .08em; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field-value {
+  font-size: 13px;
+  line-height: 1.35;
+  word-break: break-word;
+  font-weight: 500;
+}
+.field--meta {
+  flex-direction: row;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--dimmer);
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+/* ---------------------------------------------------------------- botones */
+.btn {
+  appearance: none;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background .16s, border-color .16s, color .16s;
+}
+.btn:hover:not(:disabled) { background: #0f1a28; border-color: var(--a1); }
+.btn:focus-visible { outline: 2px solid var(--a1); outline-offset: 2px; }
+.btn:disabled { opacity: .32; cursor: not-allowed; }
+
+.btn--primary {
+  border-color: var(--a1);
+  color: var(--a1);
+  background: #0a1a24;
+}
+.btn--primary:hover:not(:disabled) { background: var(--a1); color: #04121a; }
+
+.btn--ghost { font-size: 10px; padding: 9px 6px; }
+.btn--quiet { font-size: 10px; padding: 8px; color: var(--dim); }
+
+.transport {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+/* ------------------------------------------------------------------- modos */
+.modes { display: grid; gap: 5px; }
+.mode-btn {
+  appearance: none;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-2);
+  color: var(--dim);
+  padding: 7px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  transition: border-color .16s, color .16s, background .16s;
+}
+.mode-btn b { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+.mode-btn span { font-size: 9px; letter-spacing: .06em; margin-left: auto; color: var(--dimmer); }
+.mode-btn:hover { border-left-color: var(--a1); color: var(--ink); }
+.mode-btn:focus-visible { outline: 2px solid var(--a1); outline-offset: 2px; }
+.mode-btn.is-active {
+  color: var(--ink);
+  background: #0c1622;
+  border-left-color: var(--a1);
+}
+.mode-btn.is-active span { color: var(--a1); }
+
+.mode-badge {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 4px 12px;
+  font-size: 9px;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: var(--a3);
+  border: 1px solid #7dffc055;
+  background: #06110ccc;
+  pointer-events: none;
+}
+.mode-badge[hidden] { display: none; }
+
+/* Bloques que dejan de aplicar fuera del modo partida */
+.errors.is-off { opacity: .4; }
+.errors.is-off .errors-head b { color: var(--dim); font-size: 11px; letter-spacing: .1em; }
+.touch.is-off { opacity: .35; pointer-events: none; }
+
+/* ----------------------------------------------------------------- barras */
+.progress { display: flex; flex-direction: column; gap: 6px; }
+.progress-track,
+.meter,
+.loadbar {
+  height: 4px;
+  background: #101a27;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.progress-fill,
+.meter-fill,
+.loadbar-fill {
+  height: 100%;
+  background: var(--a1);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform .08s linear;
+}
+.meter-fill { background: linear-gradient(90deg, var(--a3), var(--a2)); }
+.progress-times {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.readouts { display: grid; gap: 12px; }
+.readouts--split { grid-template-columns: 1fr 1fr; }
+.readout { display: flex; flex-direction: column; gap: 5px; }
+.readout b { font-size: 20px; letter-spacing: .04em; font-weight: 600; }
+
+.visualizer {
+  width: 100%;
+  height: 92px;
+  display: block;
+  background: #070b12;
+  border: 1px solid var(--line);
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--a1);
+  background: transparent;
+}
+
+.privacy {
+  margin: auto 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--dimmer);
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+/* --------------------------------------------------------------- marcador */
+.score-block { display: flex; flex-direction: column; gap: 6px; }
+.score-value {
+  font-family: var(--display);
+  font-size: clamp(30px, 4vw, 42px);
+  letter-spacing: .1em;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.errors { display: flex; flex-direction: column; gap: 8px; }
+.errors-head { display: flex; justify-content: space-between; align-items: baseline; }
+.errors-head b { font-size: 14px; }
+.error-cells { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.error-cell {
+  height: 20px;
+  border: 1px solid var(--line-2);
+  background: #0c131d;
+  transition: background .18s, border-color .18s, box-shadow .18s;
+}
+.error-cell.is-lit {
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 12px #ff3b5c66;
+}
+
+.legend { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+.legend ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.legend li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  border-left: 2px solid var(--line-2);
+  padding-left: 8px;
+}
+.legend li em { font-style: normal; color: var(--dimmer); font-size: 10px; margin-left: auto; }
+.legend li[data-a="0"] { border-left-color: var(--a1); }
+.legend li[data-a="1"] { border-left-color: var(--a2); }
+.legend li[data-a="2"] { border-left-color: var(--a3); }
+.legend li[data-a="3"] { border-left-color: var(--a4); }
+
+kbd {
+  font: inherit;
+  font-size: 10px;
+  border: 1px solid var(--line-2);
+  padding: 1px 5px;
+  color: var(--ink);
+  background: #0d1622;
+}
+
+/* ------------------------------------------------------------- escenario */
+.bay--stage { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 340px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: #05070c;
+}
+#game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.judge-layer {
+  position: absolute;
+  left: 0; right: 0;
+  top: 22%;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.judge {
+  font-family: var(--display);
+  font-size: clamp(26px, 4.4vw, 46px);
+  letter-spacing: .24em;
+  opacity: 0;
+}
+.judge-delta { font-size: 11px; color: var(--dim); letter-spacing: .1em; }
+.judge.is-perfect { color: #fff; animation: judgePop .5s ease-out; }
+.judge.is-good { color: var(--a1); animation: judgePop .5s ease-out; }
+.judge.is-miss { color: var(--red); animation: judgeShake .5s ease-out; }
+
+@keyframes judgePop {
+  0% { opacity: 0; transform: scale(.7); }
+  18% { opacity: 1; transform: scale(1.08); }
+  70% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+@keyframes judgeShake {
+  0% { opacity: 0; transform: translateX(0); }
+  15% { opacity: 1; transform: translateX(-8px); }
+  30% { transform: translateX(7px); }
+  45% { transform: translateX(-4px); }
+  60% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; }
+}
+
+/* --------------------------------------------- indicadores de gameplay */
+.next-cue {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: #060c14cc;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  pointer-events: none;
+}
+.next-cue[hidden] { display: none; }
+.next-cue-label { font-size: 9px; letter-spacing: .24em; text-transform: uppercase; color: var(--dim); }
+.next-cue-key {
+  font-family: var(--display);
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: .08em;
+  color: var(--ink);
+}
+.next-cue-bar { width: 84px; height: 3px; background: #16202f; overflow: hidden; }
+.next-cue-bar i { display: block; height: 100%; background: var(--ink); transform-origin: left; transform: scaleX(0); }
+.next-cue[data-action="0"] { border-bottom-color: var(--a1); }
+.next-cue[data-action="0"] .next-cue-key, .next-cue[data-action="0"] .next-cue-bar i { color: var(--a1); background: var(--a1); }
+.next-cue[data-action="1"] { border-bottom-color: var(--a2); }
+.next-cue[data-action="1"] .next-cue-key, .next-cue[data-action="1"] .next-cue-bar i { color: var(--a2); background: var(--a2); }
+.next-cue[data-action="2"] { border-bottom-color: var(--a3); }
+.next-cue[data-action="2"] .next-cue-key, .next-cue[data-action="2"] .next-cue-bar i { color: var(--a3); background: var(--a3); }
+.next-cue[data-action="3"] { border-bottom-color: var(--a4); }
+.next-cue[data-action="3"] .next-cue-key, .next-cue[data-action="3"] .next-cue-bar i { color: var(--a4); background: var(--a4); }
+.next-cue-key { background: none !important; }
+
+.input-readout {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  letter-spacing: .14em;
+  color: var(--dim);
+  opacity: 0;
+  transition: opacity .12s;
+  pointer-events: none;
+  z-index: 2;
+}
+.input-readout.is-visible { opacity: 1; }
+.input-readout.is-tight { color: var(--a3); }
+
+.judge.is-collision { color: var(--red); animation: judgeShake .5s ease-out; }
+
+/* --------------------------------------------------------- superposición */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(60% 60% at 50% 50%, #05070ce6, #05070cf7);
+  backdrop-filter: blur(2px);
+  padding: 20px;
+}
+.overlay[hidden] { display: none; }
+
+.panel {
+  width: min(460px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+  align-items: center;
+}
+.panel[hidden] { display: none; }
+.panel h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 20px;
+  letter-spacing: .24em;
+  font-weight: 700;
+}
+.panel p { margin: 0; color: var(--dim); font-size: 12px; line-height: 1.6; }
+
+.keylist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dim);
+  width: 100%;
+}
+.keylist li { display: flex; gap: 8px; align-items: center; justify-content: center; }
+
+.loadbar { width: 100%; height: 6px; }
+.loadline { display: flex; gap: 10px; align-items: baseline; justify-content: center; }
+.loadline span:first-child { color: var(--a1); font-size: 14px; }
+
+.countdown {
+  font-family: var(--display);
+  font-size: clamp(52px, 10vw, 104px);
+  letter-spacing: .16em;
+  line-height: 1;
+  color: var(--ink);
+  animation: countPulse .6s ease-out;
+}
+@keyframes countPulse {
+  0% { opacity: 0; transform: scale(1.5); letter-spacing: .6em; }
+  100% { opacity: 1; transform: scale(1); letter-spacing: .16em; }
+}
+
+.result-title {
+  font-size: clamp(24px, 5vw, 40px);
+  letter-spacing: .3em;
+}
+.result-title.is-over { color: var(--red); }
+.result-title.is-done { color: var(--a3); }
+.result-sub { font-size: 11px; }
+
+.stats { width: 100%; display: flex; flex-direction: column; gap: 2px; }
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  background: #0a111b;
+  border-left: 2px solid var(--line-2);
+  font-size: 11px;
+}
+.stat-row span { color: var(--dim); letter-spacing: .16em; }
+.stat-row b { letter-spacing: .06em; }
+
+.panel-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+/* --------------------------------------------------------------- táctiles */
+.touch {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.touch[hidden] { display: none; }
+.touch button {
+  appearance: none;
+  font: inherit;
+  background: #0a111b;
+  border: 1px solid var(--line-2);
+  color: var(--ink);
+  padding: 12px 4px;
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.touch button b { font-family: var(--display); font-size: 20px; letter-spacing: .1em; }
+.touch button span { font-size: 9px; letter-spacing: .16em; color: var(--dim); text-transform: uppercase; }
+.touch button[data-action="0"] { border-bottom: 2px solid var(--a1); }
+.touch button[data-action="1"] { border-bottom: 2px solid var(--a2); }
+.touch button[data-action="2"] { border-bottom: 2px solid var(--a3); }
+.touch button[data-action="3"] { border-bottom: 2px solid var(--a4); }
+.touch button.is-hit { background: #16273a; }
+.touch button:focus-visible { outline: 2px solid var(--a1); outline-offset: 2px; }
+
+/* ----------------------------------------------------------------- avisos */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translate(-50%, 20px);
+  max-width: min(560px, 92vw);
+  padding: 10px 14px;
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: .04em;
+  background: #0b1420;
+  border: 1px solid var(--line-2);
+  border-left-width: 3px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s, transform .2s;
+  z-index: 20;
+}
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+.toast.is-error { border-left-color: var(--red); }
+.toast.is-warn { border-left-color: var(--a2); }
+.toast.is-info { border-left-color: var(--a1); }
+
+/* ------------------------------------------------------------- responsive */
+@media (max-width: 1180px) {
+  .bays {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "stage stage" "left right";
+  }
+  .bay--stage { grid-area: stage; }
+  .bay--left { grid-area: left; }
+  .bay--right { grid-area: right; }
+  .stage { min-height: 46dvh; }
+  #app { height: auto; }
+}
+
+@media (max-width: 720px) {
+  :root { --gap: 10px; }
+  .bays {
+    grid-template-columns: 1fr;
+    grid-template-areas: "stage" "right" "left";
+  }
+  .bay { grid-template-columns: 18px minmax(0, 1fr); }
+  .masthead { gap: 10px; }
+  .state-chip { margin-left: 0; }
+  .stage { min-height: 44dvh; }
+  .transport { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (hover: none) {
+  .btn { padding: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
+</style>
+</head>
+<body>
+
+<div id="app" data-state="MENU">
+
+  <header class="masthead">
+    <h1 class="wordmark">VECTOR<em>PULSE</em></h1>
+    <p class="tagline">Pista vectorial generada desde tu propia música</p>
+    <div class="state-chip"><span>estado</span><b id="state-label">MENU</b></div>
+  </header>
+
+  <main class="bays">
+
+    <!-- ============================ MÚSICA ============================ -->
+    <section class="bay bay--left" aria-label="Panel de música">
+      <div class="bay-rail" aria-hidden="true">MÚSICA</div>
+      <div class="bay-body">
+
+        <button id="btn-select" class="btn btn--primary" data-select-song>Seleccionar canción</button>
+        <input id="file-input" type="file" accept="audio/*" hidden>
+
+        <div class="field">
+          <span class="field-key">pista</span>
+          <strong id="song-name" class="field-value">Sin cargar</strong>
+          <span id="song-format" class="field-sub">—</span>
+        </div>
+
+        <div class="progress" role="group" aria-label="Progreso de la canción">
+          <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+          <div class="progress-times">
+            <span id="time-current">0:00</span>
+            <span id="time-total">0:00</span>
+          </div>
+        </div>
+
+        <div class="readouts">
+          <div class="readout">
+            <span class="field-key">bpm</span>
+            <b id="bpm-value">—</b>
+            <span id="bpm-note" class="field-sub">sin datos</span>
+          </div>
+          <div class="readout">
+            <span class="field-key">energía</span>
+            <div class="meter"><div id="energy-fill" class="meter-fill"></div></div>
+            <span class="field-sub">nivel instantáneo</span>
+          </div>
+        </div>
+
+        <canvas id="visualizer" class="visualizer" aria-hidden="true"></canvas>
+
+        <div class="field">
+          <span class="field-key">modo</span>
+          <div class="modes" role="group" aria-label="Modo de juego">
+            <button data-mode="PLAY" class="mode-btn is-active" aria-pressed="true">
+              <b>Partida</b><span>6 fallos y fuera</span>
+            </button>
+            <button data-mode="FREE" class="mode-btn" aria-pressed="false">
+              <b>Demo libre</b><span>sin fallos que corten</span>
+            </button>
+            <button data-mode="AUTO" class="mode-btn" aria-pressed="false">
+              <b>Demo auto</b><span>se juega sola</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="transport" role="group" aria-label="Controles de reproducción">
+          <button id="btn-play" class="btn btn--ghost" disabled>Play</button>
+          <button id="btn-pause" class="btn btn--ghost" disabled>Pausa</button>
+          <button id="btn-stop" class="btn btn--ghost" disabled>Stop</button>
+          <button id="btn-restart" class="btn btn--ghost" disabled>Reiniciar</button>
+        </div>
+
+        <button id="btn-regenerate" class="btn btn--quiet" disabled>Regenerar nivel</button>
+
+        <div class="field">
+          <label class="field-key" for="offset-slider">calibración de sincronía</label>
+          <input id="offset-slider" type="range" min="-200" max="200" step="5" value="0">
+          <span id="offset-value" class="field-sub">0 ms</span>
+        </div>
+
+        <div class="field field--meta">
+          <span id="level-info">—</span>
+          <span id="seed-info">—</span>
+        </div>
+
+        <p class="privacy">El archivo se procesa en tu navegador. Nada se envía a ningún servidor.</p>
+      </div>
+    </section>
+
+    <!-- =========================== GAMEPLAY =========================== -->
+    <section class="bay bay--stage" aria-label="Zona de juego">
+      <div id="stage" class="stage">
+        <canvas id="game-canvas"></canvas>
+
+        <div id="mode-badge" class="mode-badge" hidden></div>
+
+        <div id="next-cue" class="next-cue" hidden>
+          <span class="next-cue-label">próxima</span>
+          <span id="next-cue-key" class="next-cue-key">W</span>
+          <div class="next-cue-bar"><i id="next-cue-fill"></i></div>
+        </div>
+
+        <div class="judge-layer" aria-live="polite">
+          <div id="judge" class="judge"></div>
+          <div id="judge-delta" class="judge-delta"></div>
+        </div>
+
+        <div id="input-readout" class="input-readout"></div>
+
+        <div id="overlay" class="overlay">
+
+          <div id="panel-menu" class="panel">
+            <h2>Elige una canción</h2>
+            <p>Se analiza en tu dispositivo y se convierte en un trazado jugable. Cada canción produce un nivel distinto.</p>
+            <p>Pulsa la tecla cuando el obstáculo cruce la línea verde. El hueco por el que hay que pasar va marcado en la propia barrera.</p>
+            <p>¿Solo quieres verlo? En el panel de la izquierda tienes <b>Demo libre</b>, donde ningún fallo corta la canción, y <b>Demo auto</b>, que se juega sola.</p>
+            <ul class="keylist">
+              <li><kbd>A</kbd> desvío izquierda</li>
+              <li><kbd>D</kbd> desvío derecha</li>
+              <li><kbd>W</kbd> impulso</li>
+              <li><kbd>S</kbd> fase</li>
+            </ul>
+            <button class="btn btn--primary" data-select-song>Seleccionar canción</button>
+          </div>
+
+          <div id="panel-loading" class="panel" hidden>
+            <h2>Analizando pista</h2>
+            <div class="loadbar"><div id="load-bar" class="loadbar-fill"></div></div>
+            <p class="loadline"><span id="load-percent">0%</span> <span id="load-label">Leyendo archivo…</span></p>
+          </div>
+
+          <div id="panel-ready" class="panel panel--ready" hidden>
+            <div id="countdown" class="countdown">LISTO</div>
+            <p id="ready-hint">Pulsa COMENZAR o la barra espaciadora</p>
+            <button id="btn-start" class="btn btn--primary">Comenzar</button>
+          </div>
+
+          <div id="panel-paused" class="panel" hidden>
+            <h2>En pausa</h2>
+            <p>La música, el trazado y el marcador están congelados.</p>
+            <button id="btn-resume" class="btn btn--primary">Continuar</button>
+          </div>
+
+          <div id="panel-gameover" class="panel panel--result" hidden>
+            <h2 class="result-title is-over">GAME OVER</h2>
+            <p class="result-sub">Se superaron los errores consecutivos permitidos.</p>
+            <div id="stats-gameover" class="stats"></div>
+            <div class="panel-actions">
+              <button id="btn-retry" class="btn btn--primary">Volver a intentar</button>
+              <button class="btn btn--ghost" data-select-song>Seleccionar otra canción</button>
+            </div>
+          </div>
+
+          <div id="panel-finished" class="panel panel--result" hidden>
+            <h2 class="result-title is-done">LEVEL COMPLETE</h2>
+            <p class="result-sub">Llegaste al final de la canción.</p>
+            <div id="stats-finished" class="stats"></div>
+            <div class="panel-actions">
+              <button id="btn-retry2" class="btn btn--primary">Jugar de nuevo</button>
+              <button class="btn btn--ghost" data-select-song>Seleccionar otra canción</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div id="touch-controls" class="touch" role="group" aria-label="Controles táctiles">
+        <button data-action="2"><b>W</b><span>impulso</span></button>
+        <button data-action="0"><b>A</b><span>izq</span></button>
+        <button data-action="3"><b>S</b><span>fase</span></button>
+        <button data-action="1"><b>D</b><span>der</span></button>
+      </div>
+    </section>
+
+    <!-- =========================== MARCADOR =========================== -->
+    <section class="bay bay--right" aria-label="Marcador">
+      <div class="bay-rail" aria-hidden="true">MARCADOR</div>
+      <div class="bay-body">
+
+        <div class="score-block">
+          <span class="field-key">score</span>
+          <b id="score-value" class="score-value">000000</b>
+        </div>
+
+        <div class="readouts readouts--split">
+          <div class="readout">
+            <span class="field-key">combo</span>
+            <b id="combo-value">0</b>
+          </div>
+          <div class="readout">
+            <span class="field-key">multiplicador</span>
+            <b id="multiplier-value">x1</b>
+          </div>
+        </div>
+
+        <div class="readout">
+          <span class="field-key">precisión</span>
+          <b id="accuracy-value">100.0%</b>
+        </div>
+
+        <div class="errors" id="errors">
+          <div class="errors-head">
+            <span class="field-key">errores consecutivos</span>
+            <b id="error-label">0 / 5</b>
+          </div>
+          <div class="error-cells" aria-hidden="true">
+            <i class="error-cell"></i><i class="error-cell"></i><i class="error-cell"></i>
+            <i class="error-cell"></i><i class="error-cell"></i>
+          </div>
+          <p class="field-sub">Un acierto reinicia el contador.</p>
+        </div>
+
+        <div class="legend">
+          <span class="field-key">acciones</span>
+          <ul>
+            <li data-a="2"><kbd>W</kbd> impulso <em>salta el muro bajo</em></li>
+            <li data-a="0"><kbd>A</kbd> izquierda <em>muro a la derecha</em></li>
+            <li data-a="3"><kbd>S</kbd> fase <em>abertura de la compuerta</em></li>
+            <li data-a="1"><kbd>D</kbd> derecha <em>muro a la izquierda</em></li>
+          </ul>
+          <p class="field-sub">Pulsa cuando el obstáculo cruce la <b>línea verde</b>, no cuando te alcance: tienes 0,45 s de margen para maniobrar.</p>
+          <p class="field-sub"><kbd>espacio</kbd> play/pausa · <kbd>R</kbd> reiniciar · <kbd>1</kbd>-<kbd>4</kbd> como alias</p>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast" class="toast" role="status"></div>
+  <audio id="audio" preload="auto"></audio>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module">
+/* ===== config.js ===== */
+/**
+ * config.js
+ * Constantes ajustables del proyecto. Todo lo que un diseñador de niveles
+ * querría tocar (ventanas de precisión, densidad, velocidad, colores)
+ * vive aquí para no tener que buscarlo dentro de la lógica.
+ */
+
+/**
+ * GAMEPLAY — panel único de ajuste de dificultad y tolerancia.
+ * Los tiempos van en milisegundos porque es la unidad en la que se piensa al
+ * afinar un juego de ritmo; CONFIG los reexpone en segundos para el código.
+ */
+const GAMEPLAY = {
+  timing: {
+    perfect: 150,   // ms  |Δt| <= 150 -> PERFECT
+    good: 300,      // ms  |Δt| <= 300 -> GOOD
+    miss: 500,      // ms  ventana en la que una pulsación se asocia a un evento
+    lead: 450,      // ms  adelanto de la línea de acción respecto a la nave
+  },
+
+  collision: {
+    playerHitboxScale: 0.7,    // la caja de la nave es menor que su modelo
+    obstacleHitboxScale: 0.92, // y la del obstáculo, algo menor que su malla
+  },
+
+  level: {
+    minObstacleDistance: 16,  // unidades de mundo entre obstáculos
+    safeDistance: 8,          // holgura visual pedida alrededor del hueco
+    reactionDistance: 10,     // distancia de la línea de acción a la nave
+    minSafeTime: 0.72,        // suelo temporal absoluto entre eventos (s)
+  },
+
+  difficulty: {
+    startingDensity: 0.35,    // densidad al inicio de la canción
+    maxDensity: 0.75,         // densidad al final
+  },
+};
+
+const MS = (v) => v / 1000;
+
+const CONFIG = {
+  // ---- Análisis de audio (se ejecuta una vez, offline, sobre el PCM) ----
+  analysis: {
+    targetSampleRate: 22050, // remuestreo aproximado: reduce a la mitad el coste de FFT
+    fftSize: 1024,           // ventana ~46 ms a 22050 Hz
+    hopSize: 256,            // salto ~11.6 ms -> resolución temporal suficiente
+    onsetMinGap: 0.06,       // separación mínima entre transitorios detectados (s)
+    thresholdWindow: 0.22,   // media móvil del umbral adaptativo (s)
+    thresholdMultiplier: 1.4,
+    thresholdBias: 0.015,
+    bpmMin: 60,
+    bpmMax: 200,
+    bpmFoldRange: [78, 175], // rango al que se pliega el tempo final
+  },
+
+  // ---- Sincronización y juicio ----
+  timing: {
+    perfect: MS(GAMEPLAY.timing.perfect),
+    good: MS(GAMEPLAY.timing.good),
+    miss: MS(GAMEPLAY.timing.miss),
+    lead: MS(GAMEPLAY.timing.lead),  // el obstáculo llega a la nave lead segundos
+                                     // DESPUÉS del pulso: ese hueco es la zona
+                                     // de reacción, y es visible en la pista.
+    lookahead: 2.8,  // segundos de pista visible por delante
+    offset: 0,       // calibración manual del jugador (s), ajustable en la UI
+  },
+
+  // ---- Reglas ----
+  rules: {
+    maxConsecutiveErrors: 5, // GAME OVER cuando el contador SUPERA este valor
+    countdown: 3,            // segundos de cuenta regresiva
+  },
+
+  // ---- Generación procedural ----
+  level: {
+    minGapCalm: 1.25,     // separación mínima entre eventos en pasajes suaves (s)
+    minGapIntense: 0.74,  // ... y en pasajes intensos
+    specialChance: 0.30,  // probabilidad relativa de la acción 4 cuando hay brillo
+    maxRepeat: 3,         // máximo de acciones idénticas seguidas
+    leadIn: 2.0,          // no generar eventos antes de este segundo
+    shapeRate: 15,        // muestras por segundo de la curva de la pista
+  },
+
+  // ---- Puntuación ----
+  score: {
+    perfect: 100,
+    good: 50,
+    miss: 0,
+    comboPerStep: 10,   // cada 10 de combo sube un multiplicador
+    maxMultiplier: 8,
+  },
+
+  // ---- Mundo 3D ----
+  world: {
+    speed: 22,          // unidades por segundo (relación tiempo -> profundidad)
+    trackSamples: 190,  // resolución de la pista visible
+    trackBehind: 0.5,   // segundos de pista dibujados por detrás del jugador
+    halfWidth: 3.4,
+    laneOffset: 1.9,    // desplazamiento lateral de la nave
+    fogNear: 34,
+    fogFar: 78,
+  },
+
+  // ---- Paleta (coherente con el CSS) ----
+  colors: {
+    background: 0x05070c,
+    track: 0x8fb6d9,
+    trackHot: 0xe6f1ff,
+    player: 0xe6f1ff,
+    grid: 0x1d3550,
+    obstacle: 0x101d2e,
+    safe: 0x7dffc0,
+    collision: 0xff3b5c,
+    action: [0x4fe0ff, 0xffc96b, 0x7dffc0, 0xff6fd8], // 1,2,3,4
+    perfect: 0xffffff,
+    good: 0x8fb6d9,
+    miss: 0xff3b5c,
+  },
+};
+
+/** Nombres visibles de cada acción (índice 0 -> tecla A). */
+const ACTIONS = [
+  { key: 'A', name: 'DESVÍO IZQUIERDA', short: 'IZQ' },
+  { key: 'D', name: 'DESVÍO DERECHA', short: 'DER' },
+  { key: 'W', name: 'IMPULSO', short: 'SALTO' },
+  { key: 'S', name: 'FASE', short: 'FASE' },
+];
+
+/**
+ * Modos de juego.
+ *  PLAY  partida normal: seis fallos consecutivos terminan la partida.
+ *  FREE  demo jugable: se puntúa igual, pero ningún fallo corta la canción.
+ *  AUTO  demo automática: el juego se ejecuta solo, sin intervención ni fallos.
+ */
+const MODES = {
+  PLAY: 'PLAY',
+  FREE: 'FREE',
+  AUTO: 'AUTO',
+};
+
+const MODE_LABELS = {
+  PLAY: '',
+  FREE: 'DEMO · SIN FALLOS',
+  AUTO: 'DEMO AUTOMÁTICA',
+};
+
+const STATE = {
+  MENU: 'MENU',
+  LOADING: 'LOADING',
+  READY: 'READY',
+  PLAYING: 'PLAYING',
+  PAUSED: 'PAUSED',
+  GAME_OVER: 'GAME_OVER',
+  FINISHED: 'FINISHED',
+};
+
+/* ===== dsp.js ===== */
+/**
+ * dsp.js
+ * Utilidades numéricas: FFT radix-2 iterativa, ventana de Hann,
+ * PRNG determinista y helpers de interpolación/suavizado.
+ * No depende del DOM: puede probarse en Node.
+ */
+
+/** FFT compleja in-place, radix-2 (Cooley-Tukey). n debe ser potencia de 2. */
+class FFT {
+  constructor(n) {
+    if ((n & (n - 1)) !== 0) throw new Error('FFT: n debe ser potencia de 2');
+    this.n = n;
+    this.levels = Math.round(Math.log2(n));
+    this.cos = new Float64Array(n / 2);
+    this.sin = new Float64Array(n / 2);
+    for (let i = 0; i < n / 2; i++) {
+      this.cos[i] = Math.cos((2 * Math.PI * i) / n);
+      this.sin[i] = Math.sin((2 * Math.PI * i) / n);
+    }
+    // Tabla de bit-reversal precalculada
+    this.rev = new Uint32Array(n);
+    for (let i = 0; i < n; i++) {
+      let x = i, r = 0;
+      for (let j = 0; j < this.levels; j++) { r = (r << 1) | (x & 1); x >>= 1; }
+      this.rev[i] = r >>> 0;
+    }
+  }
+
+  /** Transformada directa. re/im son Float32Array|Float64Array de longitud n. */
+  forward(re, im) {
+    const n = this.n, cos = this.cos, sin = this.sin, rev = this.rev;
+    for (let i = 0; i < n; i++) {
+      const j = rev[i];
+      if (j > i) {
+        let t = re[i]; re[i] = re[j]; re[j] = t;
+        t = im[i]; im[i] = im[j]; im[j] = t;
+      }
+    }
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1;
+      const step = n / size;
+      for (let i = 0; i < n; i += size) {
+        for (let j = i, k = 0; j < i + half; j++, k += step) {
+          const l = j + half;
+          const tre = re[l] * cos[k] + im[l] * sin[k];
+          const tim = -re[l] * sin[k] + im[l] * cos[k];
+          re[l] = re[j] - tre; im[l] = im[j] - tim;
+          re[j] += tre; im[j] += tim;
+        }
+      }
+    }
+  }
+}
+
+/** Ventana de Hann de longitud n. */
+function hannWindow(n) {
+  const w = new Float32Array(n);
+  for (let i = 0; i < n; i++) w[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (n - 1)));
+  return w;
+}
+
+/** PRNG determinista de 32 bits. Devuelve una función () => [0,1). */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Hash estable de cadena (FNV-1a de 32 bits). */
+function hashString(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/** Suavizado por media móvil simétrica. radius en muestras. */
+function smooth(arr, radius) {
+  if (radius <= 0) return arr.slice();
+  const out = new Float32Array(arr.length);
+  let sum = 0;
+  const n = arr.length;
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - radius);
+    const b = Math.min(n - 1, i + radius);
+    // recalcular por ventana pequeña es suficiente aquí (radios cortos)
+    sum = 0;
+    for (let k = a; k <= b; k++) sum += arr[k];
+    out[i] = sum / (b - a + 1);
+  }
+  return out;
+}
+
+/** Normaliza a [0,1] dividiendo por el percentil indicado (robusto ante picos). */
+function normalizeByPercentile(arr, p = 0.98) {
+  const copy = Array.from(arr).sort((a, b) => a - b);
+  const ref = copy[Math.min(copy.length - 1, Math.floor(copy.length * p))] || 1;
+  const out = new Float32Array(arr.length);
+  for (let i = 0; i < arr.length; i++) out[i] = clamp(arr[i] / (ref || 1), 0, 1);
+  return out;
+}
+
+/** Muestreo lineal de un array indexado por tiempo con una tasa dada. */
+function sampleAt(arr, rate, t) {
+  if (!arr || arr.length === 0) return 0;
+  const x = t * rate;
+  if (x <= 0) return arr[0];
+  if (x >= arr.length - 1) return arr[arr.length - 1];
+  const i = Math.floor(x);
+  return lerp(arr[i], arr[i + 1], x - i);
+}
+
+/** Formatea segundos como m:ss. */
+function formatTime(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/* ===== collision.js ===== */
+/**
+ * collision.js
+ * FUENTE ÚNICA DE VERDAD de la geometría de juego.
+ *
+ * Los mismos números describen (a) los volúmenes sólidos que se dibujan y
+ * (b) los que se usan para detectar colisiones. world.js construye las mallas
+ * a partir de estas cajas y game.js las convierte en THREE.Box3. Si un muro
+ * se ve, choca; si no choca, no se ve. No hay forma de que se desincronicen.
+ *
+ * Sistema de coordenadas LOCAL al obstáculo (y a la nave), relativo al centro
+ * de la pista en ese instante:
+ *   x  lateral (0 = centro de la pista)
+ *   y  altura sobre la superficie de la pista
+ *   z  profundidad (0 = plano del obstáculo)
+ */
+
+/** Grosor de los obstáculos en Z. Grueso a propósito: legibilidad y colisión fiable. */
+const OBSTACLE_DEPTH = 1.3;
+
+/**
+ * Volúmenes sólidos por acción. Chocar con cualquiera de ellos es COLISIÓN.
+ *  0 (A) muro a la derecha  -> el hueco está a la izquierda
+ *  1 (D) muro a la izquierda -> el hueco está a la derecha
+ *  2 (W) muro bajo           -> el hueco está arriba (impulso)
+ *  3 (S) compuerta con abertura central -> sólo se pasa en fase
+ */
+const SOLIDS = {
+  // Los muros laterales cruzan el centro: quedarse quieto NUNCA es seguro.
+  0: [{ x0: -0.35, x1: 3.5, y0: 0, y1: 5.0 }],
+  1: [{ x0: -3.5, x1: 0.35, y0: 0, y1: 5.0 }],
+  2: [{ x0: -3.5, x1: 3.5, y0: 0, y1: 1.25 }],
+  // La compuerta es una ranura horizontal de lado a lado, a la altura de
+  // crucero. Al ocupar todo el ancho, el carril en el que venga la nave da
+  // igual: lo único que la salva es comprimirse. Y como la ranura está a la
+  // altura normal de vuelo, comprimirse tampoco la salva de nada más.
+  3: [
+    { x0: -3.5, x1: 3.5, y0: 0, y1: 0.83 },
+    { x0: -3.5, x1: 3.5, y0: 1.10, y1: 3.6 },
+  ],
+};
+
+/** Hueco por el que hay que pasar. Sólo sirve para dibujarlo (ayuda de lectura). */
+const SAFE_ZONES = {
+  0: { x0: -3.5, x1: -0.35, y0: 0.05, y1: 2.6 },
+  1: { x0: 0.35, x1: 3.5, y0: 0.05, y1: 2.6 },
+  2: { x0: -3.5, x1: 3.5, y0: 1.25, y1: 2.9 },
+  3: { x0: -3.5, x1: 3.5, y0: 0.83, y1: 1.10 },
+};
+
+/** Altura de crucero de la nave (centro de su caja) y centro de la abertura. */
+const HOVER_Y = 1.0;
+/** La abertura está a la altura de crucero: la fase comprime, no levanta. */
+const APERTURE_Y = HOVER_Y;
+
+/**
+ * Caja de la nave. Es deliberadamente más pequeña que el modelo visual
+ * (las alas sobresalen), tal como pide un juego que quiere sentirse justo.
+ */
+const BASE_HALF = { x: 0.44, y: 0.46, z: 0.50 };
+const PLAYER_HALF = {
+  x: BASE_HALF.x * GAMEPLAY.collision.playerHitboxScale,
+  y: BASE_HALF.y * GAMEPLAY.collision.playerHitboxScale,
+  z: BASE_HALF.z * GAMEPLAY.collision.playerHitboxScale,
+};
+/**
+ * En fase la nave se aplasta EN ALTURA y sólo en altura. Si también encogiera
+ * de ancho o de fondo, pulsar la fase serviría para colarse por los muros
+ * laterales, y la acción equivocada dejaría de castigarse.
+ */
+const PHASE_HALF = { x: BASE_HALF.x * GAMEPLAY.collision.playerHitboxScale,
+                            y: 0.12,
+                            z: BASE_HALF.z * GAMEPLAY.collision.playerHitboxScale };
+
+/** Instante en que un obstáculo alcanza a la nave (el pulso musical va antes). */
+const arrivalOf = (event) => event.time + CONFIG.timing.lead;
+
+/** Semiancho del contacto en segundos: cuánto dura el cruce nave/obstáculo. */
+function contactHalfTime() {
+  const halfDepth = (OBSTACLE_DEPTH * GAMEPLAY.collision.obstacleHitboxScale) / 2;
+  return (halfDepth + PLAYER_HALF.z) / CONFIG.world.speed;
+}
+
+/** Rellena una THREE.Box3 ya existente (sin reservar memoria por frame). */
+function setBox(box, cx, cy, cz, hx, hy, hz) {
+  box.min.set(cx - hx, cy - hy, cz - hz);
+  box.max.set(cx + hx, cy + hy, cz + hz);
+  return box;
+}
+
+/**
+ * Caja de un volumen sólido en coordenadas de mundo.
+ * @param {object} solid  {x0,x1,y0,y1} local
+ * @param {number} ox,oy  centro de la pista donde está el obstáculo
+ * @param {number} z      profundidad del obstáculo
+ * @param {number} sweep  margen extra en Z para el barrido entre frames
+ */
+function fillSolidBox(box, solid, ox, oy, z, sweep = 0) {
+  const s = GAMEPLAY.collision.obstacleHitboxScale;
+  const cx = (solid.x0 + solid.x1) / 2;
+  const cy = (solid.y0 + solid.y1) / 2;
+  const hx = ((solid.x1 - solid.x0) / 2) * s;
+  const hy = ((solid.y1 - solid.y0) / 2) * s;
+  const hz = ((OBSTACLE_DEPTH * s) / 2) + sweep / 2;
+  return setBox(box, ox + cx, oy + cy, z + sweep / 2, hx, hy, hz);
+}
+
+/* ===== audioAnalyzer.js ===== */
+/**
+ * audioAnalyzer.js
+ * Análisis offline del archivo elegido por el usuario.
+ *
+ * Todo ocurre en el dispositivo: el ArrayBuffer se decodifica con
+ * decodeAudioData(), se mezcla a mono, se diezma y se recorre por frames
+ * calculando FFT, energía por bandas, centroide y flujo espectral.
+ * De ahí salen los transitorios (onsets) y una estimación de tempo.
+ *
+ * LIMITACIÓN DOCUMENTADA: la estimación de BPM es una autocorrelación de la
+ * función de detección de onsets. Funciona bien con material percusivo y
+ * tempo estable; en música rubato, orquestal o con tempo variable puede
+ * equivocarse de octava (mitad/doble) o fallar. Por eso siempre se muestra
+ * como "BPM estimado" y el nivel NO depende críticamente de ese número.
+ */
+
+
+/** Mezcla todos los canales de un AudioBuffer a un Float32Array mono. */
+function mixToMono(audioBuffer) {
+  const ch = audioBuffer.numberOfChannels;
+  const len = audioBuffer.length;
+  const out = new Float32Array(len);
+  for (let c = 0; c < ch; c++) {
+    const data = audioBuffer.getChannelData(c);
+    for (let i = 0; i < len; i++) out[i] += data[i];
+  }
+  if (ch > 1) for (let i = 0; i < len; i++) out[i] /= ch;
+  return out;
+}
+
+/** Diezma por un factor entero promediando (antialias muy básico pero suficiente). */
+function decimate(samples, factor) {
+  if (factor <= 1) return samples;
+  const n = Math.floor(samples.length / factor);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    const base = i * factor;
+    for (let k = 0; k < factor; k++) s += samples[base + k];
+    out[i] = s / factor;
+  }
+  return out;
+}
+
+/** Cede el hilo para que la interfaz pueda repintar durante el análisis. */
+const yieldToUI = () => new Promise((r) => setTimeout(r, 0));
+
+/**
+ * Núcleo del análisis. Función pura (sin DOM ni Web Audio): recibe PCM mono.
+ * @param {Float32Array} samples
+ * @param {number} sampleRate
+ * @param {(p:number, label:string)=>void} onProgress
+ */
+async function analyzeSamples(samples, sampleRate, onProgress = () => {}) {
+  const A = CONFIG.analysis;
+  const fftSize = A.fftSize;
+  const hop = A.hopSize;
+  const bins = fftSize / 2;
+  const frameRate = sampleRate / hop;
+  const duration = samples.length / sampleRate;
+
+  const frameCount = Math.max(1, Math.floor((samples.length - fftSize) / hop) + 1);
+
+  const rms = new Float32Array(frameCount);
+  const flux = new Float32Array(frameCount);
+  const low = new Float32Array(frameCount);
+  const mid = new Float32Array(frameCount);
+  const high = new Float32Array(frameCount);
+  const centroid = new Float32Array(frameCount);
+  const dominant = new Float32Array(frameCount);
+
+  const fft = new FFT(fftSize);
+  const win = hannWindow(fftSize);
+  const re = new Float64Array(fftSize);
+  const im = new Float64Array(fftSize);
+  const mag = new Float32Array(bins);
+  const prev = new Float32Array(bins);
+
+  const binHz = sampleRate / fftSize;
+  const lowMax = Math.max(1, Math.floor(250 / binHz));
+  const midMax = Math.max(lowMax + 1, Math.floor(2000 / binHz));
+
+  const CHUNK = 300; // frames por tanda antes de ceder el hilo
+
+  for (let f = 0; f < frameCount; f++) {
+    const off = f * hop;
+
+    let energy = 0;
+    for (let i = 0; i < fftSize; i++) {
+      const s = samples[off + i] || 0;
+      energy += s * s;
+      re[i] = s * win[i];
+      im[i] = 0;
+    }
+    rms[f] = Math.sqrt(energy / fftSize);
+
+    fft.forward(re, im);
+
+    let fl = 0, lo = 0, md = 0, hi = 0, num = 0, den = 0, best = 0, bestBin = 0;
+    for (let k = 1; k < bins; k++) {
+      const m = Math.sqrt(Math.sqrt(re[k] * re[k] + im[k] * im[k])); // compresión suave
+      mag[k] = m;
+      const d = m - prev[k];
+      if (d > 0) fl += d;
+      if (k <= lowMax) lo += m; else if (k <= midMax) md += m; else hi += m;
+      const hz = k * binHz;
+      num += hz * m; den += m;
+      if (m > best) { best = m; bestBin = k; }
+    }
+    mag[0] = 0;
+    prev.set(mag);
+
+    flux[f] = fl;
+    low[f] = lo; mid[f] = md; high[f] = hi;
+    centroid[f] = den > 0 ? num / den : 0;
+    dominant[f] = bestBin * binHz;
+
+    if (f % CHUNK === CHUNK - 1) {
+      onProgress(0.1 + 0.7 * (f / frameCount), 'Midiendo espectro y energía…');
+      await yieldToUI();
+    }
+  }
+
+  onProgress(0.82, 'Detectando transitorios…');
+  await yieldToUI();
+
+  // --- Normalizaciones para uso posterior ---
+  const rmsN = normalizeByPercentile(rms, 0.97);
+  const lowN = normalizeByPercentile(low, 0.97);
+  const midN = normalizeByPercentile(mid, 0.97);
+  const highN = normalizeByPercentile(high, 0.97);
+  const odf = normalizeByPercentile(flux, 0.97); // onset detection function
+
+  // --- Umbral adaptativo + selección de picos ---
+  const thWin = Math.max(2, Math.round(A.thresholdWindow * frameRate));
+  const localMean = smooth(odf, thWin);
+  const minGapFrames = Math.max(1, Math.round(A.onsetMinGap * frameRate));
+
+  const onsets = [];
+  let lastIdx = -1e9;
+  for (let f = 2; f < frameCount - 2; f++) {
+    const v = odf[f];
+    const th = localMean[f] * A.thresholdMultiplier + A.thresholdBias;
+    if (v < th) continue;
+    if (v < odf[f - 1] || v < odf[f + 1] || v < odf[f - 2] || v < odf[f + 2]) continue;
+    if (f - lastIdx < minGapFrames) {
+      // conservar el más fuerte de dos transitorios muy juntos
+      const prevOnset = onsets[onsets.length - 1];
+      if (prevOnset && v > prevOnset.strength) {
+        prevOnset.time = f / frameRate;
+        prevOnset.strength = v;
+        prevOnset.low = lowN[f]; prevOnset.mid = midN[f]; prevOnset.high = highN[f];
+        prevOnset.energy = rmsN[f];
+        prevOnset.frequency = dominant[f];
+        prevOnset.centroid = centroid[f];
+        lastIdx = f;
+      }
+      continue;
+    }
+    lastIdx = f;
+    onsets.push({
+      time: f / frameRate,
+      strength: v,
+      energy: rmsN[f],
+      low: lowN[f],
+      mid: midN[f],
+      high: highN[f],
+      frequency: dominant[f],
+      centroid: centroid[f],
+    });
+  }
+
+  onProgress(0.9, 'Estimando tempo…');
+  await yieldToUI();
+
+  const { bpm, confidence } = estimateTempo(odf, frameRate);
+
+  // --- Curvas suavizadas para dar forma a la pista (baja resolución) ---
+  const shapeRate = CONFIG.level.shapeRate;
+  const shapeLen = Math.max(2, Math.ceil(duration * shapeRate));
+  const envEnergy = new Float32Array(shapeLen);
+  const envLow = new Float32Array(shapeLen);
+  const envHigh = new Float32Array(shapeLen);
+  const rmsSm = smooth(rmsN, Math.round(frameRate * 0.25));
+  const lowSm = smooth(lowN, Math.round(frameRate * 0.25));
+  const highSm = smooth(highN, Math.round(frameRate * 0.25));
+  for (let i = 0; i < shapeLen; i++) {
+    const t = i / shapeRate;
+    envEnergy[i] = sampleAt(rmsSm, frameRate, t);
+    envLow[i] = sampleAt(lowSm, frameRate, t);
+    envHigh[i] = sampleAt(highSm, frameRate, t);
+  }
+
+  // --- Cambios bruscos de energía (surges) ---
+  const surges = [];
+  const lookback = Math.round(shapeRate * 1.5);
+  for (let i = lookback; i < shapeLen; i++) {
+    const delta = envEnergy[i] - envEnergy[i - lookback];
+    if (delta > 0.22) {
+      const t = i / shapeRate;
+      if (!surges.length || t - surges[surges.length - 1].time > 4) {
+        surges.push({ time: t, delta });
+      }
+    }
+  }
+
+  let peak = 0, sum = 0;
+  for (let i = 0; i < frameCount; i++) { sum += rmsN[i]; if (rmsN[i] > peak) peak = rmsN[i]; }
+
+  onProgress(1, 'Análisis completo');
+
+  return {
+    duration,
+    sampleRate,
+    frameRate,
+    frameCount,
+    shapeRate,
+    rms: rmsN,
+    low: lowN,
+    mid: midN,
+    high: highN,
+    odf,
+    centroid,
+    dominant,
+    envEnergy,
+    envLow,
+    envHigh,
+    onsets,
+    surges,
+    bpm,
+    bpmConfidence: confidence,
+    avgEnergy: sum / frameCount,
+    peakEnergy: peak,
+    // Helpers de muestreo por tiempo
+    energyAt(t) { return sampleAt(this.envEnergy, this.shapeRate, t); },
+    lowAt(t) { return sampleAt(this.envLow, this.shapeRate, t); },
+    highAt(t) { return sampleAt(this.envHigh, this.shapeRate, t); },
+  };
+}
+
+/**
+ * Tempo por autocorrelación de la ODF, con refuerzo armónico para evitar
+ * que gane un submúltiplo. Devuelve BPM plegado a un rango musical usual.
+ */
+function estimateTempo(odf, frameRate) {
+  const A = CONFIG.analysis;
+  const n = odf.length;
+  if (n < frameRate * 4) return { bpm: 0, confidence: 0 };
+
+  // quitar la media para que la autocorrelación mida periodicidad, no nivel
+  let mean = 0;
+  for (let i = 0; i < n; i++) mean += odf[i];
+  mean /= n;
+  const x = new Float32Array(n);
+  for (let i = 0; i < n; i++) x[i] = Math.max(0, odf[i] - mean);
+
+  const minLag = Math.floor((60 / A.bpmMax) * frameRate);
+  const maxLag = Math.ceil((60 / A.bpmMin) * frameRate);
+  const raw = new Float32Array(maxLag + 1);
+
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let s = 0;
+    const limit = n - lag;
+    // submuestreo del acumulador para acotar el coste en pistas largas
+    const step = limit > 200000 ? 2 : 1;
+    for (let i = 0; i < limit; i += step) s += x[i] * x[i + lag];
+    raw[lag] = s / (limit / step);
+  }
+
+  let best = -1, bestLag = minLag, sum = 0, count = 0;
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let score = raw[lag];
+    if (lag * 2 <= maxLag) score += 0.6 * raw[lag * 2];
+    if (lag * 3 <= maxLag) score += 0.3 * raw[lag * 3];
+    sum += score; count++;
+    if (score > best) { best = score; bestLag = lag; }
+  }
+
+  const avg = count ? sum / count : 1;
+  const confidence = avg > 0 ? clamp((best / avg - 1) / 2.5, 0, 1) : 0;
+
+  let bpm = (60 * frameRate) / bestLag;
+  const [foldLo, foldHi] = A.bpmFoldRange;
+  let guard = 0;
+  while (bpm < foldLo && guard++ < 6) bpm *= 2;
+  while (bpm > foldHi && guard++ < 12) bpm /= 2;
+
+  return { bpm: Math.round(bpm * 10) / 10, confidence };
+}
+
+/** Envoltorio que se encarga de decodificar el archivo del usuario. */
+class AudioAnalyzer {
+  constructor(audioContext) {
+    this.ctx = audioContext;
+  }
+
+  /**
+   * @param {File} file
+   * @param {(p:number,label:string)=>void} onProgress
+   */
+  async analyzeFile(file, onProgress = () => {}) {
+    onProgress(0.02, 'Leyendo archivo…');
+    const arrayBuffer = await file.arrayBuffer();
+
+    onProgress(0.06, 'Decodificando audio…');
+    let audioBuffer;
+    try {
+      audioBuffer = await this.ctx.decodeAudioData(arrayBuffer.slice(0));
+    } catch (err) {
+      const e = new Error('Este navegador no puede decodificar el archivo elegido.');
+      e.cause = err;
+      e.code = 'DECODE_FAILED';
+      throw e;
+    }
+
+    onProgress(0.09, 'Preparando señal…');
+    await yieldToUI();
+
+    const mono = mixToMono(audioBuffer);
+    const factor = Math.max(1, Math.round(audioBuffer.sampleRate / CONFIG.analysis.targetSampleRate));
+    const samples = decimate(mono, factor);
+    const sr = audioBuffer.sampleRate / factor;
+
+    const analysis = await analyzeSamples(samples, sr, onProgress);
+    analysis.originalSampleRate = audioBuffer.sampleRate;
+    analysis.channels = audioBuffer.numberOfChannels;
+    analysis.duration = audioBuffer.duration; // duración exacta del contenedor
+    return analysis;
+  }
+}
+
+/* ===== levelGenerator.js ===== */
+/**
+ * levelGenerator.js
+ * Convierte el análisis musical en (a) una secuencia de eventos jugables y
+ * (b) la forma geométrica de la pista.
+ *
+ * Es determinista: con la misma semilla y el mismo análisis produce
+ * exactamente el mismo nivel. La semilla se deriva del archivo
+ * (nombre + tamaño + duración + BPM), así que volver a jugar la misma
+ * canción reproduce el mismo trazado salvo que se pida regenerarlo.
+ */
+
+
+/** Deriva una semilla estable a partir de los datos del archivo y la canción. */
+function deriveSeed(file, analysis) {
+  const key = `${file.name}|${file.size}|${analysis.duration.toFixed(3)}|${analysis.bpm}`;
+  return hashString(key);
+}
+
+/**
+ * @param {object} analysis  resultado de analyzeSamples()
+ * @param {number} seed
+ * @param {object} options   { density: 0..1 }
+ */
+function generateLevel(analysis, seed, options = {}) {
+  const L = CONFIG.level;
+  const rng = mulberry32(seed);
+  const densityScale = options.density ?? 1;
+
+  // Suelo absoluto de separación: el mayor de (tiempo mínimo de seguridad,
+  // distancia mínima en unidades de mundo). Ningún ajuste de dificultad puede
+  // colocar dos obstáculos por debajo de esto.
+  const HARD_FLOOR = Math.max(
+    GAMEPLAY.level.minSafeTime,
+    GAMEPLAY.level.minObstacleDistance / CONFIG.world.speed
+  );
+
+  /**
+   * Separación exigida en el instante t. Sube la dificultad de forma
+   * progresiva: la densidad crece con el avance de la canción y se modula
+   * con la energía local, pero nunca baja del suelo de seguridad.
+   */
+  const gapAt = (t) => {
+    const progress = clamp(t / Math.max(analysis.duration, 1), 0, 1);
+    const base = lerp(GAMEPLAY.difficulty.startingDensity, GAMEPLAY.difficulty.maxDensity, progress);
+    const local = analysis.energyAt(t);
+    const density = clamp(base * (0.55 + 0.95 * local) * densityScale, 0, 1);
+    return Math.max(HARD_FLOOR, lerp(L.minGapCalm, L.minGapIntense, density));
+  };
+
+  // Deja hueco al final: el obstáculo llega `lead` segundos después del pulso
+  // y debe alcanzar a la nave antes de que se acabe la canción.
+  const LAST_BEAT = analysis.duration - (CONFIG.timing.lead + 0.9);
+
+  const events = [];
+  let lastTime = -Infinity;
+  const recent = [];
+
+  const pushEvent = (time, action, data) => {
+    const tot = ((data.low || 0) + (data.mid || 0) + (data.high || 0)) || 1;
+    events.push({
+      time,
+      type: 'beat',
+      action,                       // 0..3  -> teclas 1..4
+      energy: data.energy ?? 0.5,
+      intensity: data.strength ?? 0.5,
+      frequency: data.frequency ?? 0,
+      bright: (data.high || 0) / tot,
+      deep: (data.low || 0) / tot,
+      surge: false,
+      judged: false,
+      quality: null,
+    });
+    recent.push(action);
+    if (recent.length > L.maxRepeat) recent.shift();
+    lastTime = time;
+  };
+
+  // La decisión es RELATIVA a la mezcla de la propia canción: comparar contra
+  // valores absolutos hace que un tema con mucho bajo se convierta en un
+  // nivel de un solo botón. Las medianas de la pista sirven de referencia.
+  const median = (arr, fallback) => {
+    if (!arr.length) return fallback;
+    const s = arr.slice().sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  };
+  const ratios = analysis.onsets.map((o) => {
+    const t = (o.low + o.mid + o.high) || 1;
+    return { rl: o.low / t, rh: o.high / t, c: o.centroid };
+  });
+  const medLow = median(ratios.map((r) => r.rl), 0.4);
+  const medHigh = median(ratios.map((r) => r.rh), 0.25);
+  const medCentroid = median(ratios.map((r) => r.c), 1500);
+
+  const counts = [0, 0, 0, 0];
+  let placed = 0;
+
+  const chooseAction = (o) => {
+    const total = (o.low + o.mid + o.high) || 1;
+    const rl = o.low / total;
+    const rh = o.high / total;
+
+    // Cuotas: ninguna acción debe acaparar el nivel
+    const share = (a) => (placed > 6 ? counts[a] / placed : 0);
+
+    let action;
+    if (rl > medLow * 1.1 && o.strength > 0.18 && (share(2) < 0.3 || rng() < 0.35)) {
+      action = 2;                                   // golpe grave -> IMPULSO
+    } else if (rh > medHigh * 1.04 && rng() < L.specialChance && (share(3) < 0.2 || rng() < 0.3)) {
+      action = 3;                                   // brillo/agudos -> FASE
+    } else {
+      // El timbre inclina la elección lateral: más brillante, más a la derecha
+      const tilt = clamp((o.centroid - medCentroid) / (medCentroid * 2), -0.5, 0.5);
+      action = rng() < 0.5 + tilt * 0.6 ? 1 : 0;
+    }
+
+    // Evitar cadenas monótonas de la misma acción
+    if (recent.length >= L.maxRepeat && recent.every((a) => a === action)) {
+      const alt = [0, 1, 2, 3].filter((a) => a !== action);
+      action = alt[Math.floor(rng() * alt.length)];
+    }
+
+    counts[action]++;
+    placed++;
+    return action;
+  };
+
+  // --- 1. Eventos desde los transitorios detectados ---
+  for (const o of analysis.onsets) {
+    if (o.time < L.leadIn) continue;
+    if (o.time > LAST_BEAT) break;
+    if (o.time - lastTime < gapAt(o.time)) continue;
+
+    pushEvent(o.time, chooseAction(o), o);
+  }
+
+  // --- 2. Respaldo: si el material es poco percusivo, usar una rejilla de tempo ---
+  const minExpected = Math.max(8, analysis.duration * 0.35);
+  if (events.length < minExpected && analysis.bpm > 0) {
+    events.length = 0;
+    recent.length = 0;
+    lastTime = -Infinity;
+    const beat = 60 / analysis.bpm;
+    for (let t = L.leadIn; t < LAST_BEAT; t += beat) {
+      const e = analysis.energyAt(t);
+      // en pasajes muy suaves se salta un pulso de cada dos
+      if (e < 0.18 && rng() < 0.5) continue;
+      if (t - lastTime < gapAt(t)) continue;
+      const descriptor = {
+        low: analysis.lowAt(t), mid: 0.4, high: analysis.highAt(t),
+        strength: e, energy: e,
+        centroid: sampleAt(analysis.centroid, analysis.frameRate, t),
+        frequency: sampleAt(analysis.dominant, analysis.frameRate, t),
+      };
+      pushEvent(t, chooseAction(descriptor), descriptor);
+    }
+    events.fallback = true;
+  }
+
+  // --- 3. Marcar los eventos que caen sobre subidas bruscas de energía ---
+  for (const s of analysis.surges) {
+    let best = null, bestDt = 0.6;
+    for (const ev of events) {
+      const dt = Math.abs(ev.time - s.time);
+      if (dt < bestDt) { bestDt = dt; best = ev; }
+      if (ev.time > s.time + 1) break;
+    }
+    if (best) best.surge = true;
+  }
+
+  events.sort((a, b) => a.time - b.time);
+
+  // --- 4. Reparto mínimo garantizado ---------------------------------------
+  // Si una acción casi no aparece, el nivel se vuelve monótono y el jugador
+  // nunca aprende esa tecla. Se promueven los eventos más adecuados por
+  // timbre (los más brillantes para FASE, los más graves para IMPULSO)
+  // evitando colocarlos pegados entre sí.
+  const ensureShare = (action, key, share) => {
+    const target = Math.floor(events.length * share);
+    let have = 0;
+    for (const e of events) if (e.action === action) have++;
+    if (have >= target || events.length < 12) return;
+
+    const candidates = events
+      .map((e, i) => ({ e, i }))
+      .filter((c) => c.e.action !== action)
+      .sort((a, b) => (b.e[key] || 0) - (a.e[key] || 0));
+
+    for (const c of candidates) {
+      if (have >= target) break;
+      const prev = events[c.i - 1], next = events[c.i + 1];
+      if ((prev && prev.action === action) || (next && next.action === action)) continue;
+      c.e.action = action;
+      have++;
+    }
+  };
+  ensureShare(3, 'bright', 0.09);
+  ensureShare(2, 'deep', 0.14);
+
+  events.forEach((e, i) => { e.index = i; });
+
+  const shape = buildTrackShape(analysis, rng);
+
+  const byAction = [0, 0, 0, 0];
+  events.forEach((e) => byAction[e.action]++);
+  const perSecond = analysis.duration > 0 ? events.length / analysis.duration : 0;
+  let minGap = Infinity;
+  for (let i = 1; i < events.length; i++) minGap = Math.min(minGap, events[i].time - events[i - 1].time);
+
+  return {
+    seed,
+    events,
+    shape,
+    surges: analysis.surges,
+    usedFallback: !!events.fallback,
+    stats: {
+      count: events.length,
+      perSecond,
+      byAction,
+      minGap: isFinite(minGap) ? minGap : 0,
+      minDistance: isFinite(minGap) ? minGap * CONFIG.world.speed : 0,
+      difficulty: perSecond < 0.7 ? 'SUAVE' : perSecond < 1.1 ? 'MEDIO' : perSecond < 1.4 ? 'INTENSO' : 'EXTREMO',
+    },
+  };
+}
+
+/**
+ * Forma de la pista: desplazamiento lateral, altura y anchura en función del
+ * tiempo. Combina osciladores cuya amplitud depende de la energía con un
+ * paseo aleatorio determinista que salta en los cambios bruscos.
+ */
+function buildTrackShape(analysis, rng) {
+  const rate = analysis.shapeRate;
+  const n = Math.max(2, Math.ceil(analysis.duration * rate) + rate);
+
+  const w1 = 0.30 + rng() * 0.25;
+  const w2 = 0.09 + rng() * 0.10;
+  const p1 = rng() * Math.PI * 2;
+  const p2 = rng() * Math.PI * 2;
+  const p3 = rng() * Math.PI * 2;
+  const beatW = analysis.bpm > 0 ? (2 * Math.PI * (analysis.bpm / 60)) / 4 : 0.9;
+
+  // Paseo aleatorio: el objetivo cambia en cada subida brusca de energía
+  const walk = new Float32Array(n);
+  const surgeTimes = analysis.surges.map((s) => s.time);
+  let target = 0, current = 0, si = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / rate;
+    while (si < surgeTimes.length && surgeTimes[si] <= t) {
+      target = (rng() * 2 - 1) * 3.2;
+      si++;
+    }
+    current += (target - current) * 0.012;
+    walk[i] = current;
+  }
+
+  const cx = new Float32Array(n);
+  const cy = new Float32Array(n);
+  const width = new Float32Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const t = i / rate;
+    const e = analysis.energyAt(t);
+    const lo = analysis.lowAt(t);
+    const hi = analysis.highAt(t);
+
+    const amp = lerp(0.5, 3.0, e);
+    cx[i] = Math.sin(t * w1 + p1) * amp + Math.sin(t * w2 + p2) * amp * 0.55 + walk[i];
+    cy[i] = Math.sin(t * beatW + p3) * lerp(0.05, 1.0, lo) + hi * 0.5;
+    width[i] = lerp(1.12, 0.82, e);
+  }
+
+  const cxs = smooth(cx, 3);
+  const cys = smooth(cy, 3);
+  const ws = smooth(width, 4);
+
+  return {
+    rate,
+    length: n,
+    cx: cxs,
+    cy: cys,
+    width: ws,
+    sample(t) {
+      return {
+        x: sampleAt(this.cx, this.rate, t),
+        y: sampleAt(this.cy, this.rate, t),
+        width: sampleAt(this.width, this.rate, t),
+      };
+    },
+  };
+}
+
+/* ===== player.js ===== */
+/**
+ * player.js
+ * La nave: diseño original, minimalista pero con volumen real.
+ *
+ * SEPARACIÓN CLAVE: `pose` (x, y relativos al centro de la pista) es la
+ * posición FÍSICA con la que se calcula la colisión. Todo lo cosmético
+ * —balanceo, vibración, respiración— se aplica al grupo interior `body`,
+ * nunca al exterior. Así una sacudida de cámara jamás provoca ni evita
+ * un choque.
+ *
+ * Los tiempos de las acciones cubren la ventana de juicio completa: el
+ * obstáculo llega `lead` segundos después del pulso y la pulsación puede
+ * adelantarse o retrasarse `good` segundos, así que la pose segura debe
+ * mantenerse entre lead-good y lead+good tras pulsar.
+ */
+
+
+
+const LANE_HOLD = 0.95;   // s que la nave mantiene el carril tras esquivar
+const LANE_RATE = 22;     // velocidad de acercamiento al carril (1/s)
+const JUMP_TIME = 0.95;   // s de duración total del impulso
+const JUMP_PEAK = 2.30;   // altura máxima
+const PHASE_TIME = 0.95;  // s de duración de la fase
+const PHASE_IN = 0.08;    // s de entrada/salida de la pose comprimida
+
+class Player {
+  constructor() {
+    const C = CONFIG.colors;
+
+    this.group = new THREE.Group();   // posición física
+    this.body = new THREE.Group();    // todo lo cosmético cuelga de aquí
+    this.group.add(this.body);
+
+    this.hullMaterial = new THREE.MeshLambertMaterial({
+      color: 0x16283c, emissive: 0x081522, transparent: true, opacity: 0.96,
+    });
+    this.edgeMaterial = new THREE.LineBasicMaterial({
+      color: C.player, transparent: true, opacity: 1, depthWrite: false,
+    });
+
+    const hull = new THREE.Group();
+
+    // --- Proa: cuña de cuatro caras apuntando hacia el fondo (-Z) ---
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.85, 4), this.hullMaterial);
+    nose.rotation.x = -Math.PI / 2;
+    nose.rotation.y = Math.PI / 4;
+    nose.position.z = -0.62;
+    hull.add(nose); hull.add(this.wrap(nose));
+
+    // --- Casco central ---
+    const core = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.24, 0.95), this.hullMaterial);
+    core.position.z = 0.05;
+    hull.add(core); hull.add(this.wrap(core));
+
+    // --- Alas: dos placas inclinadas ---
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.05, 0.5), this.hullMaterial);
+      wing.position.set(side * 0.33, -0.02, 0.16);
+      wing.rotation.z = side * 0.34;
+      hull.add(wing); hull.add(this.wrap(wing));
+    }
+
+    // --- Cabina ---
+    this.cockpitMaterial = new THREE.MeshBasicMaterial({
+      color: C.trackHot, transparent: true, opacity: 0.85,
+    });
+    const cockpit = new THREE.Mesh(new THREE.OctahedronGeometry(0.15), this.cockpitMaterial);
+    cockpit.position.set(0, 0.15, -0.12);
+    hull.add(cockpit);
+
+    // --- Toberas ---
+    this.thrustMaterial = new THREE.MeshBasicMaterial({
+      color: C.action[0], transparent: true, opacity: 0.9,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    this.thrusters = [];
+    for (const side of [-1, 1]) {
+      const t = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.5, 8), this.thrustMaterial);
+      t.rotation.x = Math.PI / 2;
+      t.position.set(side * 0.19, 0, 0.75);
+      hull.add(t);
+      this.thrusters.push(t);
+    }
+
+    // --- Luces de posición: babor y estribor con colores distintos ---
+    this.navMaterials = [
+      new THREE.MeshBasicMaterial({ color: C.action[0] }),
+      new THREE.MeshBasicMaterial({ color: C.action[1] }),
+    ];
+    [-1, 1].forEach((side, i) => {
+      const l = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), this.navMaterials[i]);
+      l.position.set(side * 0.47, 0.02, 0.2);
+      hull.add(l);
+    });
+
+    this.hull = hull;
+    this.body.add(hull);
+
+    // --- Sombra / indicador de posición sobre la pista ---
+    this.shadowMaterial = new THREE.MeshBasicMaterial({
+      color: 0x0a1826, transparent: true, opacity: 0.75, depthWrite: false,
+    });
+    this.shadow = new THREE.Mesh(new THREE.CircleGeometry(0.62, 26), this.shadowMaterial);
+    this.shadow.rotation.x = -Math.PI / 2;
+    this.shadowRingMaterial = new THREE.LineBasicMaterial({
+      color: C.track, transparent: true, opacity: 0.7, depthWrite: false,
+    });
+    const ringPts = [];
+    for (let i = 0; i <= 26; i++) {
+      const a = (i / 26) * Math.PI * 2, b = ((i + 1) / 26) * Math.PI * 2;
+      ringPts.push(Math.cos(a) * 0.62, 0, Math.sin(a) * 0.62, Math.cos(b) * 0.62, 0, Math.sin(b) * 0.62);
+    }
+    const rg = new THREE.BufferGeometry();
+    rg.setAttribute('position', new THREE.Float32BufferAttribute(ringPts, 3));
+    this.shadowRing = new THREE.LineSegments(rg, this.shadowRingMaterial);
+    this.shadowGroup = new THREE.Group();
+    this.shadowGroup.add(this.shadow); this.shadowGroup.add(this.shadowRing);
+    this.group.add(this.shadowGroup);
+
+    // --- Anillo de fase ---
+    this.ringMaterial = new THREE.LineBasicMaterial({
+      color: C.action[3], transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const rpts = [];
+    for (let i = 0; i < 30; i++) {
+      const a = (i / 30) * Math.PI * 2, b = ((i + 1) / 30) * Math.PI * 2;
+      rpts.push(Math.cos(a), Math.sin(a), 0, Math.cos(b), Math.sin(b), 0);
+    }
+    const rgeo = new THREE.BufferGeometry();
+    rgeo.setAttribute('position', new THREE.Float32BufferAttribute(rpts, 3));
+    this.ring = new THREE.LineSegments(rgeo, this.ringMaterial);
+    this.body.add(this.ring);
+
+    this.flashColor = C.player;
+    this.pose = { x: 0, y: HOVER_Y, halfX: PLAYER_HALF.x, halfY: PLAYER_HALF.y, halfZ: PLAYER_HALF.z };
+    this.reset();
+  }
+
+  /** Contorno luminoso de una malla, para que se lea el volumen sobre fondo oscuro. */
+  wrap(mesh) {
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), this.edgeMaterial);
+    e.position.copy(mesh.position);
+    e.rotation.copy(mesh.rotation);
+    return e;
+  }
+
+  reset() {
+    this.lane = 0;
+    this.laneTimer = 0;
+    this.x = 0;
+    this.vx = 0;
+    this.jumpT = -1;
+    this.phaseT = -1;
+    this.flashT = 0;
+    this.shakeT = 0;
+    this.scalePop = 1;
+    this.pose.x = 0;
+    this.pose.y = HOVER_Y;
+    this.pose.halfX = PLAYER_HALF.x;
+    this.pose.halfY = PLAYER_HALF.y;
+    this.pose.halfZ = PLAYER_HALF.z;
+    this.group.position.set(0, 0, 0);
+    this.body.position.set(0, 0, 0);
+    this.body.rotation.set(0, 0, 0);
+    this.ringMaterial.opacity = 0;
+    this.edgeMaterial.color.setHex(CONFIG.colors.player);
+  }
+
+  /**
+   * Ejecuta una acción (0..3). La llaman por igual el teclado, los botones
+   * táctiles y el controlador de la demo: no hay atajos para nadie.
+   */
+  trigger(action) {
+    switch (action) {
+      case 0: this.lane = -1; this.laneTimer = LANE_HOLD; break;
+      case 1: this.lane = 1; this.laneTimer = LANE_HOLD; break;
+      case 2: this.jumpT = 0; break;
+      case 3: this.phaseT = 0; break;
+    }
+  }
+
+  feedback(quality) {
+    const C = CONFIG.colors;
+    if (quality === 'perfect') { this.flashT = 0.26; this.flashColor = C.perfect; this.scalePop = 1.22; }
+    else if (quality === 'good') { this.flashT = 0.2; this.flashColor = C.good; this.scalePop = 1.1; }
+    else if (quality === 'collision') { this.flashT = 0.45; this.flashColor = C.collision; this.shakeT = 0.4; }
+    else { this.flashT = 0.32; this.flashColor = C.miss; this.shakeT = 0.18; }
+  }
+
+  /**
+   * @param {number} dt    delta real (s)
+   * @param {number} time  tiempo de la canción (s)
+   * @param {{x:number,y:number}} track  centro de la pista bajo la nave
+   * @param {number} pulse energía instantánea (sólo cosmética)
+   */
+  update(dt, time, track, pulse) {
+    // ---------------- FÍSICA ----------------
+    if (this.laneTimer > 0) {
+      this.laneTimer -= dt;
+      if (this.laneTimer <= 0) this.lane = 0;
+    }
+    const targetX = this.lane * CONFIG.world.laneOffset;
+    const prevX = this.x;
+    this.x += (targetX - this.x) * clamp(dt * LANE_RATE, 0, 1);
+    this.vx = (this.x - prevX) / Math.max(dt, 1e-4);
+
+    // Impulso: sube casi instantáneo y baja despacio, para que la ventana de
+    // altura segura cubra toda la tolerancia de pulsación.
+    let jumpY = 0;
+    if (this.jumpT >= 0) {
+      this.jumpT += dt;
+      const p = this.jumpT / JUMP_TIME;
+      if (p >= 1) this.jumpT = -1;
+      else jumpY = JUMP_PEAK * Math.sin(Math.PI * Math.pow(p, 0.5));
+    }
+
+    // Fase: la nave se comprime y se alinea con la abertura de la compuerta.
+    let phaseK = 0;
+    if (this.phaseT >= 0) {
+      this.phaseT += dt;
+      const t = this.phaseT;
+      if (t >= PHASE_TIME) { this.phaseT = -1; this.ringMaterial.opacity = 0; }
+      else {
+        phaseK = clamp(Math.min(t / PHASE_IN, (PHASE_TIME - t) / PHASE_IN), 0, 1);
+        const p = t / PHASE_TIME;
+        this.ring.scale.setScalar(0.35 + p * 2.4);
+        this.ringMaterial.opacity = (1 - p) * 0.85;
+      }
+    }
+
+    // La fase no reposiciona la nave: sólo la aplasta. Mover la nave a la
+    // abertura la salvaría también de obstáculos que no le corresponden.
+    this.pose.x = this.x;
+    this.pose.y = HOVER_Y + jumpY;
+    this.pose.halfX = PLAYER_HALF.x + (PHASE_HALF.x - PLAYER_HALF.x) * phaseK;
+    this.pose.halfY = PLAYER_HALF.y + (PHASE_HALF.y - PLAYER_HALF.y) * phaseK;
+    this.pose.halfZ = PLAYER_HALF.z + (PHASE_HALF.z - PLAYER_HALF.z) * phaseK;
+
+    this.group.position.set(track.x + this.pose.x, track.y + this.pose.y, 0);
+
+    // ---------------- COSMÉTICA (no afecta a la colisión) ----------------
+    let sx = 0, sy = 0;
+    if (this.shakeT > 0) {
+      this.shakeT -= dt;
+      const s = Math.max(0, this.shakeT) * 1.5;
+      sx = (Math.random() - 0.5) * s;
+      sy = (Math.random() - 0.5) * s;
+    }
+    this.body.position.set(sx, sy + Math.sin(time * 2.6) * 0.045, 0);
+    this.body.rotation.z = clamp(-this.vx * 0.055, -0.55, 0.55);
+    this.body.rotation.x = clamp(-jumpY * 0.1, -0.35, 0.35);
+
+    this.scalePop += (1 - this.scalePop) * clamp(dt * 8, 0, 1);
+    // El aplastamiento visual replica el de la caja: lo que se ve es lo que choca.
+    const squeeze = 1 - phaseK * 0.62;
+    this.hull.scale.set(this.scalePop, squeeze * this.scalePop, this.scalePop);
+
+    // Motores: el brillo respira con la música, sin desplazar nada
+    const thrust = 0.55 + pulse * 0.55;
+    this.thrustMaterial.opacity = 0.35 + pulse * 0.5;
+    this.thrusters.forEach((t) => t.scale.set(1, thrust, 1));
+
+    // Sombra sobre la pista: encoge y se aclara con la altura
+    const h = clamp((this.pose.y - HOVER_Y) / JUMP_PEAK, 0, 1);
+    this.shadowGroup.position.set(0, -this.pose.y + 0.03, 0);
+    this.shadowGroup.scale.setScalar(1 - h * 0.5);
+    this.shadowMaterial.opacity = 0.75 - h * 0.5;
+    this.shadowRingMaterial.opacity = 0.7 - h * 0.4;
+
+    if (this.flashT > 0) {
+      this.flashT -= dt;
+      this.edgeMaterial.color.setHex(this.flashColor);
+    } else {
+      this.edgeMaterial.color.setHex(CONFIG.colors.player);
+    }
+  }
+
+  dispose() {
+    this.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    [this.hullMaterial, this.edgeMaterial, this.cockpitMaterial, this.thrustMaterial,
+      this.shadowMaterial, this.shadowRingMaterial, this.ringMaterial].forEach((m) => m.dispose());
+    this.navMaterials.forEach((m) => m.dispose());
+  }
+}
+
+/* ===== world.js ===== */
+/**
+ * world.js
+ * Representación 3D. Los obstáculos se construyen LEYENDO las mismas cajas
+ * que usa el detector de colisiones (collision.js): cada volumen sólido es
+ * literalmente un THREE.Mesh con las dimensiones de su hitbox. Lo que se ve
+ * es lo que choca.
+ *
+ * Rendimiento: nada se crea ni se destruye durante la partida. La pista son
+ * BufferGeometry preasignadas que se reescriben cada frame; los obstáculos
+ * salen de un pool fijo; las partículas viven en un único THREE.Points.
+ */
+
+
+
+const POOL_PER_TYPE = 8;
+const PARTICLES = 140;   // deliberadamente pocas: los efectos no deben tapar el juego
+
+/** Letras W A S D con trazos rectos propios (siete segmentos no da la W). */
+function letterSegments(ch, ox, oy, w, h) {
+  const STROKES = {
+    A: [[0, 0, 0.5, 1], [0.5, 1, 1, 0], [0.22, 0.42, 0.78, 0.42]],
+    W: [[0, 1, 0.22, 0], [0.22, 0, 0.5, 0.62], [0.5, 0.62, 0.78, 0], [0.78, 0, 1, 1]],
+    S: [[1, 1, 0, 1], [0, 1, 0, 0.55], [0, 0.55, 1, 0.55], [1, 0.55, 1, 0], [1, 0, 0, 0]],
+    D: [[0, 0, 0, 1], [0, 1, 0.65, 1], [0.65, 1, 1, 0.72], [1, 0.72, 1, 0.28],
+        [1, 0.28, 0.65, 0], [0.65, 0, 0, 0]],
+  };
+  return (STROKES[ch] || []).map((k) => [
+    ox + (k[0] - 0.5) * w, oy + k[1] * h,
+    ox + (k[2] - 0.5) * w, oy + k[3] * h,
+  ]);
+}
+
+const LETTER_OF_ACTION = ['A', 'D', 'W', 'S'];
+
+function segmentsGeometry(list) {
+  const arr = [];
+  for (const s of list) arr.push(s[0], s[1], 0, s[2], s[3], 0);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  return g;
+}
+
+/** Marco del hueco por el que hay que pasar, con esquinas marcadas. */
+function safeFrameGeometry(zone) {
+  const { x0, x1, y0, y1 } = zone;
+  const c = Math.min(0.9, (x1 - x0) / 3, (y1 - y0) / 3);
+  const seg = [];
+  seg.push([x0, y0, x0 + c, y0], [x1 - c, y0, x1, y0]);
+  seg.push([x0, y1, x0 + c, y1], [x1 - c, y1, x1, y1]);
+  seg.push([x0, y0, x0, y0 + c], [x0, y1 - c, x0, y1]);
+  seg.push([x1, y0, x1, y0 + c], [x1, y1 - c, x1, y1]);
+  return segmentsGeometry(seg);
+}
+
+class World {
+  constructor(canvas) {
+    const C = CONFIG.colors;
+    this.canvas = canvas;
+
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setClearColor(C.background, 1);
+
+    this.scene = new THREE.Scene();
+    this.scene.fog = new THREE.Fog(C.background, CONFIG.world.fogNear, CONFIG.world.fogFar);
+
+    this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 260);
+    this.camera.position.set(0, 4.2, 9.5);
+
+    // Luz: sin ella las mallas sólidas serían siluetas planas y se perdería
+    // por completo la sensación de profundidad.
+    this.scene.add(new THREE.AmbientLight(0x35506e, 1.0));
+    const key = new THREE.DirectionalLight(0xbfe4ff, 0.85);
+    key.position.set(-4, 9, 6);
+    this.scene.add(key);
+    const rim = new THREE.DirectionalLight(0x2f6fa8, 0.5);
+    rim.position.set(5, 3, -8);
+    this.scene.add(rim);
+
+    this.buildBackground();
+    this.buildTrack();
+    this.buildObstaclePool();
+    this.buildParticles();
+
+    this.level = null;
+    this.analysis = null;
+    this.activeByEvent = new Map();
+    this.cursor = 0;
+    this.shake = 0;
+    this.camX = 0;
+    this.camY = 0;
+  }
+
+  // ------------------------------------------------------------------ fondo
+  buildBackground() {
+    const C = CONFIG.colors;
+    this.gridMaterial = new THREE.LineBasicMaterial({
+      color: C.grid, transparent: true, opacity: 0.6, depthWrite: false,
+    });
+
+    const segs = [];
+    const DEPTH = 200, SPACING = 6;
+    for (const x of [-34, -25, -18, -12, 12, 18, 25, 34]) segs.push([x, -2.4, 0, x, -2.4, -DEPTH]);
+    for (let z = 0; z >= -DEPTH; z -= SPACING) segs.push([-38, -2.4, z, 38, -2.4, z]);
+
+    const arr = [];
+    for (const s of segs) arr.push(s[0], s[1], s[2], s[3], s[4], s[5]);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+    this.grid = new THREE.LineSegments(g, this.gridMaterial);
+    this.grid.frustumCulled = false;
+    this.gridGroup = new THREE.Group();
+    this.gridGroup.add(this.grid);
+    this.scene.add(this.gridGroup);
+    this.gridSpacing = SPACING;
+  }
+
+  // ------------------------------------------------------------------ pista
+  buildTrack() {
+    const N = CONFIG.world.trackSamples;
+    this.N = N;
+    const C = CONFIG.colors;
+
+    const mk = (count, mat, isLine) => {
+      const pos = new Float32Array(count * 3);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const obj = isLine ? new THREE.Line(g, mat) : new THREE.LineSegments(g, mat);
+      obj.frustumCulled = false;
+      this.scene.add(obj);
+      return { obj, pos };
+    };
+
+    this.railMaterial = new THREE.LineBasicMaterial({ color: C.trackHot, transparent: true, opacity: 0.95, depthWrite: false });
+    this.rungMaterial = new THREE.LineBasicMaterial({ color: C.track, transparent: true, opacity: 0.3, depthWrite: false });
+    this.ribMaterial = new THREE.LineBasicMaterial({ color: C.track, transparent: true, opacity: 0.5, depthWrite: false });
+    this.laneMaterial = new THREE.LineBasicMaterial({ color: C.track, transparent: true, opacity: 0.45, depthWrite: false });
+
+    this.railL = mk(N, this.railMaterial, true);
+    this.railR = mk(N, this.railMaterial, true);
+
+    this.rungCount = Math.floor(N / 4);
+    this.rungs = mk(this.rungCount * 2, this.rungMaterial, false);
+
+    this.ribCount = Math.floor(N / 3);
+    this.ribs = mk(this.ribCount * 4, this.ribMaterial, false);
+
+    // Guías de carril: tres líneas discontinuas que dicen dónde puede estar la nave
+    this.laneCount = Math.floor(N / 3);
+    this.lanes = mk(this.laneCount * 6, this.laneMaterial, false);
+
+    // Línea de acción: donde hay que pulsar. Es el elemento más brillante de
+    // la pista porque es la única marca temporal que el jugador necesita.
+    const actionArr = [];
+    const HW = CONFIG.world.halfWidth + 0.6;
+    actionArr.push([-HW, 0.02, HW, 0.02]);
+    actionArr.push([-HW, 0.02, -HW, 1.6], [HW, 0.02, HW, 1.6]);
+    for (let i = 0; i <= 6; i++) {
+      const x = lerp(-HW, HW, i / 6);
+      actionArr.push([x, 0.02, x, 0.5]);
+    }
+    this.actionMaterial = new THREE.LineBasicMaterial({ color: C.safe, transparent: true, opacity: 0.9, depthWrite: false });
+    this.actionLine = new THREE.LineSegments(segmentsGeometry(actionArr), this.actionMaterial);
+    this.actionLine.frustumCulled = false;
+    this.scene.add(this.actionLine);
+
+    // Línea de contacto, bajo la nave: discreta, sólo para situar el plano
+    const hitArr = [[-HW, 0.02, HW, 0.02]];
+    this.hitMaterial = new THREE.LineBasicMaterial({ color: C.trackHot, transparent: true, opacity: 0.3, depthWrite: false });
+    this.hitLine = new THREE.LineSegments(segmentsGeometry(hitArr), this.hitMaterial);
+    this.hitLine.frustumCulled = false;
+    this.scene.add(this.hitLine);
+
+    // Corredor de reacción: dos raíles brillantes entre la línea de acción y la nave
+    this.corridorMaterial = new THREE.LineBasicMaterial({ color: C.safe, transparent: true, opacity: 0.22, depthWrite: false });
+    this.corridor = mk(4, this.corridorMaterial, false);
+  }
+
+  // -------------------------------------------------------------- obstáculos
+  buildObstaclePool() {
+    // Una geometría por caja sólida, compartida por todas las instancias.
+    this.templates = [0, 1, 2, 3].map((action) => {
+      const solids = SOLIDS[action].map((s) => {
+        const w = s.x1 - s.x0, h = s.y1 - s.y0;
+        const geo = new THREE.BoxGeometry(w, h, OBSTACLE_DEPTH);
+        return { geo, edges: new THREE.EdgesGeometry(geo), cx: (s.x0 + s.x1) / 2, cy: (s.y0 + s.y1) / 2 };
+      });
+      const zone = SAFE_ZONES[action];
+      return {
+        solids,
+        safe: safeFrameGeometry(zone),
+        letter: segmentsGeometry(letterSegments(LETTER_OF_ACTION[action], 0, 0, 0.62, 0.95)),
+        letterY: Math.max(zone.y1, 2.9) + 0.5,
+      };
+    });
+
+    this.pool = [[], [], [], []];
+    for (let action = 0; action < 4; action++) {
+      const tpl = this.templates[action];
+      for (let i = 0; i < POOL_PER_TYPE; i++) {
+        const group = new THREE.Group();
+        const solidMat = new THREE.MeshLambertMaterial({
+          color: CONFIG.colors.obstacle, emissive: 0x060d16, transparent: true, opacity: 1,
+        });
+        const edgeMat = new THREE.LineBasicMaterial({
+          color: CONFIG.colors.action[action], transparent: true, opacity: 1, depthWrite: false,
+        });
+        const safeMat = new THREE.LineBasicMaterial({
+          color: CONFIG.colors.safe, transparent: true, opacity: 0.75, depthWrite: false,
+        });
+
+        for (const s of tpl.solids) {
+          const m = new THREE.Mesh(s.geo, solidMat);
+          m.position.set(s.cx, s.cy, 0);
+          group.add(m);
+          const e = new THREE.LineSegments(s.edges, edgeMat);
+          e.position.set(s.cx, s.cy, 0);
+          group.add(e);
+        }
+        const safe = new THREE.LineSegments(tpl.safe, safeMat);
+        group.add(safe);
+        const letter = new THREE.LineSegments(tpl.letter, edgeMat);
+        letter.position.set(0, tpl.letterY, 0);
+        group.add(letter);
+
+        group.visible = false;
+        group.userData = { free: true, action, solidMat, edgeMat, safeMat };
+        this.scene.add(group);
+        this.pool[action].push(group);
+      }
+    }
+  }
+
+  acquire(action) {
+    const list = this.pool[action];
+    for (const g of list) if (g.userData.free) { g.userData.free = false; return g; }
+    const g = list[0];
+    g.userData.free = false;
+    return g;
+  }
+
+  release(group) {
+    group.visible = false;
+    group.userData.free = true;
+    group.scale.setScalar(1);
+    group.userData.solidMat.opacity = 1;
+    group.userData.solidMat.color.setHex(CONFIG.colors.obstacle);
+    group.userData.edgeMat.opacity = 1;
+    group.userData.edgeMat.color.setHex(CONFIG.colors.action[group.userData.action]);
+    group.userData.safeMat.opacity = 0.75;
+  }
+
+  // -------------------------------------------------------------- partículas
+  buildParticles() {
+    this.pPos = new Float32Array(PARTICLES * 3);
+    this.pData = new Array(PARTICLES).fill(null).map(() => ({ life: 0, vx: 0, vy: 0, vz: 0 }));
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pPos, 3));
+    this.particleMaterial = new THREE.PointsMaterial({
+      color: 0xffffff, size: 0.14, transparent: true, opacity: 0.8,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+    });
+    this.particles = new THREE.Points(g, this.particleMaterial);
+    this.particles.frustumCulled = false;
+    this.scene.add(this.particles);
+    this.pNext = 0;
+    for (let i = 0; i < PARTICLES; i++) this.pPos[i * 3 + 1] = -999;
+  }
+
+  burst(x, y, z, count, spread, color) {
+    if (color !== undefined) this.particleMaterial.color.setHex(color);
+    for (let i = 0; i < count; i++) {
+      const idx = this.pNext = (this.pNext + 1) % PARTICLES;
+      const d = this.pData[idx];
+      d.life = 0.45 + Math.random() * 0.25;
+      d.vx = (Math.random() - 0.5) * spread;
+      d.vy = (Math.random() - 0.5) * spread + 1.0;
+      d.vz = (Math.random() - 0.5) * spread * 0.5 + 2.2;
+      this.pPos[idx * 3] = x; this.pPos[idx * 3 + 1] = y; this.pPos[idx * 3 + 2] = z;
+    }
+  }
+
+  // -------------------------------------------------------------------- API
+  setLevel(level, analysis) {
+    this.level = level;
+    this.analysis = analysis;
+    this.resetRun();
+  }
+
+  resetRun() {
+    this.activeByEvent.forEach((g) => this.release(g));
+    this.activeByEvent.clear();
+    this.cursor = 0;
+    this.shake = 0;
+    for (let i = 0; i < PARTICLES; i++) { this.pData[i].life = 0; this.pPos[i * 3 + 1] = -999; }
+  }
+
+  sampleTrack(t) {
+    if (!this.level) return { x: 0, y: 0, width: 1 };
+    return this.level.shape.sample(Math.max(0, t));
+  }
+
+  /** Profundidad a la que se dibuja algo que ocurre en `t` visto desde `now`. */
+  zFor(t, now) {
+    return -(t - now) * CONFIG.world.speed;
+  }
+
+  addShake(amount) { this.shake = Math.min(1.6, this.shake + amount); }
+
+  update(now, dt, ctx) {
+    const W = CONFIG.world;
+    const pulse = ctx.pulse || 0;
+
+    this.updateTrackGeometry(now, pulse);
+    this.updateObstacles(now, dt);
+    this.updateParticles(dt);
+
+    this.gridGroup.position.z = (now * W.speed) % this.gridSpacing;
+    this.gridMaterial.opacity = 0.35 + pulse * 0.45;
+
+    const here = this.sampleTrack(now);
+    const lead = CONFIG.timing.lead;
+    const atLine = this.sampleTrack(now + lead);
+    this.hitLine.position.set(here.x, here.y + 0.02, 0);
+    this.actionLine.position.set(atLine.x, atLine.y + 0.02, this.zFor(now + lead, now));
+    this.actionMaterial.opacity = 0.55 + pulse * 0.4;
+
+    const ahead = this.sampleTrack(now + 1.0);
+    this.shake = Math.max(0, this.shake - dt * 2.8);
+    const sx = (Math.random() - 0.5) * this.shake * 0.8;
+    const sy = (Math.random() - 0.5) * this.shake * 0.55;
+    this.camX += (here.x * 0.5 - this.camX) * clamp(dt * 4, 0, 1);
+    this.camY += (here.y - this.camY) * clamp(dt * 4, 0, 1);
+    this.camera.position.set(this.camX + sx, this.camY + 4.2 + pulse * 0.25 + sy, 9.5);
+    this.camera.lookAt(ahead.x * 0.7, ahead.y + 1.5, -20);
+
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  updateTrackGeometry(now, pulse) {
+    const W = CONFIG.world;
+    const N = this.N;
+    const t0 = now - W.trackBehind;
+    const t1 = now + CONFIG.timing.lookahead + 0.4;
+    const L = this.railL.pos, R = this.railR.pos;
+    const rungs = this.rungs.pos, ribs = this.ribs.pos, lanes = this.lanes.pos;
+    const analysis = this.analysis;
+
+    let ri = 0, bi = 0, li = 0;
+    for (let i = 0; i < N; i++) {
+      const t = lerp(t0, t1, i / (N - 1));
+      const s = this.sampleTrack(t);
+      const hw = W.halfWidth * s.width;
+      const z = this.zFor(t, now);
+      const k = i * 3;
+      L[k] = s.x - hw; L[k + 1] = s.y; L[k + 2] = z;
+      R[k] = s.x + hw; R[k + 1] = s.y; R[k + 2] = z;
+
+      if (i % 4 === 0 && ri < this.rungCount) {
+        const j = ri * 6;
+        rungs[j] = s.x - hw; rungs[j + 1] = s.y; rungs[j + 2] = z;
+        rungs[j + 3] = s.x + hw; rungs[j + 4] = s.y; rungs[j + 5] = z;
+        ri++;
+      }
+      if (i % 3 === 0 && bi < this.ribCount) {
+        const e = analysis ? analysis.energyAt(Math.max(0, t)) : 0;
+        const h = 0.12 + e * 1.6;
+        const j = bi * 12;
+        ribs[j] = s.x - hw; ribs[j + 1] = s.y; ribs[j + 2] = z;
+        ribs[j + 3] = s.x - hw; ribs[j + 4] = s.y + h; ribs[j + 5] = z;
+        ribs[j + 6] = s.x + hw; ribs[j + 7] = s.y; ribs[j + 8] = z;
+        ribs[j + 9] = s.x + hw; ribs[j + 10] = s.y + h; ribs[j + 11] = z;
+        bi++;
+      }
+      // Guías de carril discontinuas (un trazo sí, uno no)
+      if (i % 3 === 0 && li < this.laneCount && (Math.floor(i / 3) % 2 === 0)) {
+        const t2 = lerp(t0, t1, Math.min(1, (i + 2) / (N - 1)));
+        const s2 = this.sampleTrack(t2);
+        const z2 = this.zFor(t2, now);
+        const j = li * 18;
+        [-W.laneOffset, 0, W.laneOffset].forEach((off, n) => {
+          const b = j + n * 6;
+          lanes[b] = s.x + off; lanes[b + 1] = s.y + 0.01; lanes[b + 2] = z;
+          lanes[b + 3] = s2.x + off; lanes[b + 4] = s2.y + 0.01; lanes[b + 5] = z2;
+        });
+        li++;
+      }
+    }
+    // Los huecos no usados se colapsan fuera de vista
+    for (let k = li * 18; k < lanes.length; k++) lanes[k] = 0;
+
+    this.railL.obj.geometry.attributes.position.needsUpdate = true;
+    this.railR.obj.geometry.attributes.position.needsUpdate = true;
+    this.rungs.obj.geometry.attributes.position.needsUpdate = true;
+    this.ribs.obj.geometry.attributes.position.needsUpdate = true;
+    this.lanes.obj.geometry.attributes.position.needsUpdate = true;
+    this.ribMaterial.opacity = 0.35 + pulse * 0.4;
+
+    // Corredor de reacción: de la línea de acción hasta la nave
+    const c = this.corridor.pos;
+    const a = this.sampleTrack(now + CONFIG.timing.lead);
+    const b = this.sampleTrack(now);
+    const az = this.zFor(now + CONFIG.timing.lead, now);
+    const hwA = W.halfWidth * a.width, hwB = W.halfWidth * b.width;
+    c[0] = a.x - hwA; c[1] = a.y + 0.01; c[2] = az;
+    c[3] = b.x - hwB; c[4] = b.y + 0.01; c[5] = 0;
+    c[6] = a.x + hwA; c[7] = a.y + 0.01; c[8] = az;
+    c[9] = b.x + hwB; c[10] = b.y + 0.01; c[11] = 0;
+    this.corridor.obj.geometry.attributes.position.needsUpdate = true;
+  }
+
+  updateObstacles(now, dt) {
+    if (!this.level) return;
+    const events = this.level.events;
+    const spawn = CONFIG.timing.lookahead;
+    const behind = 0.7;
+
+    while (this.cursor < events.length && arrivalOf(events[this.cursor]) < now - behind - 0.6) {
+      const ev = events[this.cursor];
+      const g = this.activeByEvent.get(ev.index);
+      if (g) { this.release(g); this.activeByEvent.delete(ev.index); }
+      this.cursor++;
+    }
+
+    for (let i = this.cursor; i < events.length; i++) {
+      const ev = events[i];
+      const arrival = arrivalOf(ev);
+      if (arrival > now + spawn) break;
+      if (arrival < now - behind - 0.6) continue;
+
+      let g = this.activeByEvent.get(ev.index);
+      if (!g) {
+        g = this.acquire(ev.action);
+        this.release(g);            // deja los materiales en su estado base…
+        g.userData.free = false;    // …pero el objeto sigue reservado
+        g.visible = true;
+        this.activeByEvent.set(ev.index, g);
+      }
+
+      const s = this.sampleTrack(arrival);
+      const z = this.zFor(arrival, now);
+      g.position.set(s.x, s.y, z);
+
+      const dist = -z;
+      let opacity = clamp((spawn * CONFIG.world.speed - dist) / 14, 0, 1);
+
+      const u = g.userData;
+      if (ev.resolved) {
+        ev.fxT = (ev.fxT || 0) + dt;
+        const p = clamp(ev.fxT / 0.4, 0, 1);
+        if (ev.quality === 'collision' || ev.quality === 'miss') {
+          u.edgeMat.color.setHex(ev.quality === 'collision' ? CONFIG.colors.collision : CONFIG.colors.miss);
+          u.solidMat.color.setHex(ev.quality === 'collision' ? 0x3a1018 : CONFIG.colors.obstacle);
+          g.scale.set(1 + p * 0.08, 1 - p * 0.2, 1);
+        } else {
+          // Acierto: la barrera se abre hacia los lados y se apaga
+          g.scale.set(1 + p * 1.1, 1 + p * 0.35, 1);
+          u.edgeMat.color.setHex(ev.quality === 'perfect' ? CONFIG.colors.perfect : CONFIG.colors.action[ev.action]);
+        }
+        opacity *= 1 - p;
+      } else {
+        // Aviso al cruzar la línea de acción: el marco del hueco se enciende
+        const toBeat = ev.time - now;
+        const warn = clamp(1 - Math.abs(toBeat) / 0.4, 0, 1);
+        u.safeMat.opacity = (0.45 + warn * 0.55) * opacity;
+      }
+
+      u.solidMat.opacity = opacity;
+      u.edgeMat.opacity = opacity;
+      if (ev.resolved) u.safeMat.opacity = 0;
+      g.visible = opacity > 0.02;
+    }
+  }
+
+  updateParticles(dt) {
+    let any = false;
+    for (let i = 0; i < PARTICLES; i++) {
+      const d = this.pData[i];
+      if (d.life <= 0) continue;
+      any = true;
+      d.life -= dt;
+      const k = i * 3;
+      this.pPos[k] += d.vx * dt;
+      this.pPos[k + 1] += d.vy * dt;
+      this.pPos[k + 2] += d.vz * dt;
+      d.vy -= 3.0 * dt;
+      if (d.life <= 0) this.pPos[k + 1] = -999;
+    }
+    if (any) this.particles.geometry.attributes.position.needsUpdate = true;
+  }
+
+  resize(width, height) {
+    if (!width || !height) return;
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+  }
+
+  dispose() {
+    this.scene.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) { Array.isArray(o.material) ? o.material.forEach((m) => m.dispose()) : o.material.dispose(); }
+    });
+    this.renderer.dispose();
+  }
+}
+
+/* ===== ui.js ===== */
+/**
+ * ui.js
+ * Toda la manipulación del DOM vive aquí: paneles, HUD, superposiciones,
+ * visualizador del analizador en tiempo real y controles táctiles.
+ * El resto del juego no toca elementos HTML directamente.
+ */
+
+
+const $ = (id) => document.getElementById(id);
+
+class UI {
+  constructor(handlers) {
+    this.h = handlers;
+
+    this.el = {
+      app: $('app'),
+      fileInput: $('file-input'),
+      btnSelect: $('btn-select'),
+      songName: $('song-name'),
+      songFormat: $('song-format'),
+      timeCurrent: $('time-current'),
+      timeTotal: $('time-total'),
+      progressFill: $('progress-fill'),
+      bpmValue: $('bpm-value'),
+      bpmNote: $('bpm-note'),
+      energyFill: $('energy-fill'),
+      viz: $('visualizer'),
+      btnPlay: $('btn-play'),
+      btnPause: $('btn-pause'),
+      btnStop: $('btn-stop'),
+      btnRestart: $('btn-restart'),
+      btnRegenerate: $('btn-regenerate'),
+      offset: $('offset-slider'),
+      offsetValue: $('offset-value'),
+      score: $('score-value'),
+      combo: $('combo-value'),
+      multiplier: $('multiplier-value'),
+      accuracy: $('accuracy-value'),
+      errorLabel: $('error-label'),
+      errorsBlock: $('errors'),
+      modeBadge: $('mode-badge'),
+      modeButtons: Array.from(document.querySelectorAll('[data-mode]')),
+      errorCells: Array.from(document.querySelectorAll('.error-cell')),
+      judge: $('judge'),
+      judgeDelta: $('judge-delta'),
+      inputReadout: $('input-readout'),
+      nextCue: $('next-cue'),
+      nextCueKey: $('next-cue-key'),
+      nextCueFill: $('next-cue-fill'),
+      overlay: $('overlay'),
+      overlayPanels: {
+        menu: $('panel-menu'),
+        loading: $('panel-loading'),
+        ready: $('panel-ready'),
+        paused: $('panel-paused'),
+        gameover: $('panel-gameover'),
+        finished: $('panel-finished'),
+      },
+      loadBar: $('load-bar'),
+      loadPercent: $('load-percent'),
+      loadLabel: $('load-label'),
+      countdown: $('countdown'),
+      readyHint: $('ready-hint'),
+      btnStart: $('btn-start'),
+      btnResume: $('btn-resume'),
+      btnRetry: $('btn-retry'),
+      btnRetry2: $('btn-retry2'),
+      statsOver: $('stats-gameover'),
+      statsDone: $('stats-finished'),
+      toast: $('toast'),
+      touch: $('touch-controls'),
+      levelInfo: $('level-info'),
+      seedInfo: $('seed-info'),
+      state: $('state-label'),
+    };
+
+    this.mode = MODES.PLAY;
+    this.vizCtx = this.el.viz.getContext('2d');
+    this.analyser = null;
+    this.freqData = null;
+    this.timeData = null;
+
+    this.bind();
+    this.setupTouch();
+    this.resizeVisualizer();
+    window.addEventListener('resize', () => this.resizeVisualizer());
+  }
+
+  bind() {
+    const h = this.h;
+    // Cualquier botón marcado con data-select-song abre el selector de archivos
+    document.querySelectorAll('[data-select-song]').forEach((btn) => {
+      btn.addEventListener('click', () => this.el.fileInput.click());
+    });
+    this.el.fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) h.onFile(file);
+      e.target.value = ''; // permite volver a elegir el mismo archivo
+    });
+
+    this.el.btnPlay.addEventListener('click', () => h.onPlay());
+    this.el.btnPause.addEventListener('click', () => h.onPause());
+    this.el.btnStop.addEventListener('click', () => h.onStop());
+    this.el.btnRestart.addEventListener('click', () => h.onRestart());
+    this.el.btnRegenerate.addEventListener('click', () => h.onRegenerate());
+    this.el.btnStart.addEventListener('click', () => h.onPlay());
+    this.el.btnResume.addEventListener('click', () => h.onPlay());
+    this.el.btnRetry.addEventListener('click', () => h.onRestart());
+    this.el.btnRetry2.addEventListener('click', () => h.onRestart());
+
+    this.el.modeButtons.forEach((btn) => {
+      btn.addEventListener('click', () => h.onMode(btn.dataset.mode));
+    });
+
+    this.el.offset.addEventListener('input', () => {
+      const ms = Number(this.el.offset.value);
+      CONFIG.timing.offset = ms / 1000;
+      this.el.offsetValue.textContent = `${ms > 0 ? '+' : ''}${ms} ms`;
+    });
+  }
+
+  setupTouch() {
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+    if (!coarse && window.innerWidth > 900) this.el.touch.hidden = true;
+    this.el.touch.querySelectorAll('button').forEach((btn) => {
+      const action = Number(btn.dataset.action);
+      const fire = (e) => { e.preventDefault(); this.h.onAction(action); btn.classList.add('is-hit'); setTimeout(() => btn.classList.remove('is-hit'), 120); };
+      btn.addEventListener('pointerdown', fire);
+    });
+  }
+
+  // ------------------------------------------------------------- estado
+  setState(state) {
+    this.el.app.dataset.state = state;
+    this.el.state.textContent = state;
+    const show = {
+      [STATE.MENU]: 'menu',
+      [STATE.LOADING]: 'loading',
+      [STATE.READY]: 'ready',
+      [STATE.PAUSED]: 'paused',
+      [STATE.GAME_OVER]: 'gameover',
+      [STATE.FINISHED]: 'finished',
+    }[state];
+
+    Object.entries(this.el.overlayPanels).forEach(([key, panel]) => {
+      panel.hidden = key !== show;
+    });
+    this.el.overlay.hidden = state === STATE.PLAYING;
+
+    const playable = state !== STATE.MENU && state !== STATE.LOADING;
+    this.el.btnPlay.disabled = !playable || state === STATE.PLAYING;
+    this.el.btnPause.disabled = state !== STATE.PLAYING;
+    this.el.btnStop.disabled = !playable;
+    this.el.btnRestart.disabled = !playable;
+    this.el.btnRegenerate.disabled = !playable || state === STATE.PLAYING;
+  }
+
+  /** Refleja el modo activo: botones, distintivo sobre el escenario y contador. */
+  setMode(mode) {
+    this.mode = mode;
+    this.el.modeButtons.forEach((btn) => {
+      const on = btn.dataset.mode === mode;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', String(on));
+    });
+    const label = MODE_LABELS[mode] || '';
+    this.el.modeBadge.textContent = label;
+    this.el.modeBadge.hidden = !label;
+    this.el.errorsBlock.classList.toggle('is-off', mode !== MODES.PLAY);
+    this.el.touch.classList.toggle('is-off', mode === MODES.AUTO);
+  }
+
+  setSongInfo(info) {
+    this.el.songName.textContent = info.name;
+    this.el.songFormat.textContent = info.format || '—';
+    this.el.timeTotal.textContent = formatTime(info.duration);
+    this.el.bpmValue.textContent = info.bpm > 0 ? Math.round(info.bpm) : '—';
+    const conf = Math.round((info.confidence || 0) * 100);
+    this.el.bpmNote.textContent = info.bpm > 0
+      ? `estimado · fiabilidad ${conf}%`
+      : 'no determinado';
+    this.el.levelInfo.textContent = `${info.eventCount} eventos · ${info.difficulty}`;
+    this.el.seedInfo.textContent = `semilla ${info.seed}`;
+  }
+
+  setProgress(current, duration) {
+    this.el.timeCurrent.textContent = formatTime(current);
+    const p = duration > 0 ? clamp(current / duration, 0, 1) : 0;
+    this.el.progressFill.style.transform = `scaleX(${p})`;
+  }
+
+  setEnergy(v) {
+    this.el.energyFill.style.transform = `scaleX(${clamp(v, 0, 1)})`;
+  }
+
+  setLoading(p, label) {
+    const pct = Math.round(clamp(p, 0, 1) * 100);
+    this.el.loadBar.style.transform = `scaleX(${p})`;
+    this.el.loadPercent.textContent = `${pct}%`;
+    if (label) this.el.loadLabel.textContent = label;
+  }
+
+  setScore(score, combo, multiplier, accuracy) {
+    this.el.score.textContent = String(score).padStart(6, '0');
+    this.el.combo.textContent = combo;
+    this.el.multiplier.textContent = `x${multiplier}`;
+    this.el.accuracy.textContent = `${accuracy.toFixed(1)}%`;
+  }
+
+  setErrors(n, max) {
+    if (this.mode !== MODES.PLAY) {
+      // Fuera del modo partida el límite no se aplica, y fingir un contador
+      // activo sería mentirle al jugador.
+      this.el.errorLabel.textContent = 'sin límite';
+      this.el.errorCells.forEach((cell) => cell.classList.remove('is-lit'));
+      return;
+    }
+    this.el.errorLabel.textContent = `${Math.min(n, max)} / ${max}`;
+    this.el.errorCells.forEach((cell, i) => cell.classList.toggle('is-lit', i < n));
+  }
+
+  showJudge(quality, delta, reason = '') {
+    const map = { perfect: 'PERFECT!', good: 'GOOD', miss: 'MISS', collision: 'COLISIÓN' };
+    const el = this.el.judge;
+    el.textContent = map[quality] || '';
+    el.className = `judge is-${quality}`;
+
+    const ms = delta === null || delta === undefined ? '' :
+      `${delta > 0 ? '+' : ''}${Math.round(delta * 1000)} ms`;
+    // El motivo importa: sin él, un MISS con la tecla correcta es un misterio.
+    this.el.judgeDelta.textContent = [reason, ms].filter(Boolean).join(' · ');
+
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+  }
+
+  /** Acuse inmediato de la pulsación, antes del veredicto físico. */
+  showInput(delta) {
+    const el = this.el.inputReadout;
+    const ms = Math.round(delta * 1000);
+    el.textContent = `${ms > 0 ? '+' : ''}${ms} ms`;
+    el.className = `input-readout is-visible ${Math.abs(delta) <= CONFIG.timing.perfect ? 'is-tight' : ''}`;
+    clearTimeout(this._inputTimer);
+    this._inputTimer = setTimeout(() => { el.className = 'input-readout'; }, 420);
+  }
+
+  /** Indicador anticipado: qué tecla toca y cuánto falta. Nunca la pulsa por ti. */
+  setNextAction(event, now) {
+    const cue = this.el.nextCue;
+    if (!event) { cue.hidden = true; return; }
+    const remaining = event.time - now;
+    if (remaining > 2.5) { cue.hidden = true; return; }
+    cue.hidden = false;
+    cue.dataset.action = String(event.action);
+    const key = ACTIONS[event.action] ? ACTIONS[event.action].key : '';
+    if (this._cueKey !== key) { this.el.nextCueKey.textContent = key; this._cueKey = key; }
+    this.el.nextCueFill.style.transform = `scaleX(${clamp(1 - remaining / 2.5, 0, 1)})`;
+  }
+
+  showCountdown(text) {
+    this.el.countdown.textContent = text;
+    this.el.countdown.style.animation = 'none';
+    void this.el.countdown.offsetWidth;
+    this.el.countdown.style.animation = '';
+  }
+
+  setReadyHint(text, showButton) {
+    this.el.readyHint.textContent = text;
+    this.el.btnStart.hidden = !showButton;
+  }
+
+  renderStats(target, stats) {
+    const rows = [
+      ['PUNTUACIÓN', String(stats.score).padStart(6, '0')],
+      ['PRECISIÓN', `${stats.accuracy.toFixed(1)}%`],
+      ['COMBO MÁX.', stats.maxCombo],
+      ['PERFECT', stats.perfect],
+      ['GOOD', stats.good],
+      ['MISS', stats.miss],
+      ['COLISIONES', stats.collision ?? 0],
+      ['CANCIÓN', stats.song],
+    ];
+    target.innerHTML = rows
+      .map(([k, v]) => `<div class="stat-row"><span>${k}</span><b>${v}</b></div>`)
+      .join('');
+  }
+
+  showGameOver(stats) { this.renderStats(this.el.statsOver, stats); }
+  showFinished(stats) { this.renderStats(this.el.statsDone, stats); }
+
+  toast(message, kind = 'info') {
+    const el = this.el.toast;
+    el.textContent = message;
+    el.className = `toast is-${kind} is-visible`;
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => { el.className = 'toast'; }, 4200);
+  }
+
+  // ------------------------------------------------------- visualizador
+  attachAnalyser(analyser) {
+    this.analyser = analyser;
+    this.freqData = new Uint8Array(analyser.frequencyBinCount);
+    this.timeData = new Uint8Array(analyser.fftSize);
+  }
+
+  resizeVisualizer() {
+    const c = this.el.viz;
+    const rect = c.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = Math.max(1, Math.floor(rect.width * dpr));
+    c.height = Math.max(1, Math.floor(rect.height * dpr));
+  }
+
+  /** Se llama desde el bucle principal. Usa AnalyserNode en vivo. */
+  drawVisualizer() {
+    const ctx = this.vizCtx;
+    const c = this.el.viz;
+    const w = c.width, h = c.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!this.analyser) return;
+
+    this.analyser.getByteFrequencyData(this.freqData);
+    this.analyser.getByteTimeDomainData(this.timeData);
+
+    // Barras logarítmicas
+    const BARS = 44;
+    const bw = w / BARS;
+    ctx.fillStyle = 'rgba(79, 224, 255, 0.55)';
+    const bins = this.freqData.length;
+    for (let i = 0; i < BARS; i++) {
+      const a = Math.floor(Math.pow(i / BARS, 2) * bins);
+      const b = Math.max(a + 1, Math.floor(Math.pow((i + 1) / BARS, 2) * bins));
+      let m = 0;
+      for (let k = a; k < b && k < bins; k++) m = Math.max(m, this.freqData[k]);
+      const bh = (m / 255) * h * 0.92;
+      ctx.fillRect(i * bw + 1, h - bh, bw - 2, bh);
+    }
+
+    // Forma de onda superpuesta
+    ctx.strokeStyle = 'rgba(230, 241, 255, 0.85)';
+    ctx.lineWidth = Math.max(1, w / 400);
+    ctx.beginPath();
+    const step = Math.max(1, Math.floor(this.timeData.length / w));
+    for (let x = 0, i = 0; i < this.timeData.length; i += step, x++) {
+      const v = (this.timeData[i] - 128) / 128;
+      const y = h / 2 + v * h * 0.42;
+      if (x === 0) ctx.moveTo(0, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  /** Realce visual del botón táctil / tecla correspondiente. */
+  pulseAction(action) {
+    const btn = this.el.touch.querySelector(`button[data-action="${action}"]`);
+    if (btn) { btn.classList.add('is-hit'); setTimeout(() => btn.classList.remove('is-hit'), 120); }
+  }
+
+  get actionNames() { return ACTIONS; }
+}
+
+/* ===== game.js ===== */
+/**
+ * game.js
+ * Orquestador: máquina de estados, reloj sincronizado con el audio,
+ * juicio de los eventos, puntuación y bucle principal.
+ *
+ * Sincronización: la referencia es siempre audio.currentTime. Como ese valor
+ * sólo se actualiza cada pocos milisegundos, se interpola con performance.now()
+ * entre actualizaciones y se reancla en cuanto el elemento reporta un tiempo
+ * nuevo. Nunca se usa setTimeout para colocar eventos.
+ */
+
+
+
+
+
+
+
+/** Reloj interpolado sobre audio.currentTime. */
+class AudioClock {
+  constructor(audio) {
+    this.audio = audio;
+    this.reset();
+  }
+  reset() {
+    this._lastRaw = -1;
+    this._anchorAudio = 0;
+    this._anchorPerf = performance.now() / 1000;
+    this._t = 0;
+  }
+  update() {
+    const raw = this.audio.currentTime;
+    if (this.audio.paused) {
+      this._lastRaw = raw;
+      this._anchorAudio = raw;
+      this._anchorPerf = performance.now() / 1000;
+      this._t = raw;
+      return this._t;
+    }
+    const perf = performance.now() / 1000;
+    if (raw !== this._lastRaw) {
+      this._lastRaw = raw;
+      this._anchorAudio = raw;
+      this._anchorPerf = perf;
+    }
+    const predicted = this._anchorAudio + (perf - this._anchorPerf);
+    if (Math.abs(predicted - this._t) > 0.2) this._t = predicted;
+    else this._t += (predicted - this._t) * 0.2;
+    return this._t;
+  }
+}
+
+class Game {
+  constructor({ canvas, audio, ui }) {
+    this.ui = ui;
+    this.audio = audio;
+    this.canvas = canvas;
+
+    this.world = new World(canvas);
+    this.player = new Player();
+    this.world.scene.add(this.player.group);
+
+    this.clock = new AudioClock(audio);
+    this.state = STATE.MENU;
+    this.analysis = null;
+    this.level = null;
+    this.file = null;
+    this.objectUrl = null;
+    this.ctx = null;
+    this.analyser = null;
+    this.sourceNode = null;
+
+    // Cajas reutilizadas cada frame: cero reservas de memoria en el bucle
+    this._shipBox = new THREE.Box3(new THREE.Vector3(), new THREE.Vector3());
+    this._solidBox = new THREE.Box3(new THREE.Vector3(), new THREE.Vector3());
+    this._prevTime = 0;
+
+    this.lastFrame = performance.now();
+    this.countdown = -1;
+    this.countdownLabel = '';
+    this.countdownActive = false;
+    this.mode = MODES.PLAY;
+
+    this.resetStats();
+    this.bindAudioEvents();
+    this.observeResize();
+
+    this.ui.setState(STATE.MENU);
+    this.ui.setMode(this.mode);
+    this.loop = this.loop.bind(this);
+    requestAnimationFrame(this.loop);
+  }
+
+  // ------------------------------------------------------------ infra
+  bindAudioEvents() {
+    this.audio.addEventListener('ended', () => {
+      if (this.state === STATE.PLAYING) this.finish();
+    });
+    this.audio.addEventListener('error', () => {
+      if (this.state === STATE.LOADING || this.state === STATE.READY) {
+        this.ui.toast('El navegador no puede reproducir este formato. Prueba con MP3, WAV o OGG.', 'error');
+        this.setState(STATE.MENU);
+      }
+    });
+  }
+
+  observeResize() {
+    const fit = () => {
+      const rect = this.canvas.parentElement.getBoundingClientRect();
+      this.world.resize(rect.width, rect.height);
+    };
+    window.addEventListener('resize', fit);
+    if (window.ResizeObserver) {
+      new ResizeObserver(fit).observe(this.canvas.parentElement);
+    }
+    fit();
+  }
+
+  ensureAudioGraph() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new AC();
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 2048;
+    this.analyser.smoothingTimeConstant = 0.72;
+    // Un elemento sólo admite un MediaElementSource: se crea una vez.
+    this.sourceNode = this.ctx.createMediaElementSource(this.audio);
+    this.sourceNode.connect(this.analyser);
+    this.analyser.connect(this.ctx.destination);
+    this.ui.attachAnalyser(this.analyser);
+  }
+
+  setState(s) {
+    this.state = s;
+    this.ui.setState(s);
+  }
+
+  /** Cambia de modo en caliente; el contador de errores se limpia al salir de PLAY. */
+  setMode(mode) {
+    if (!MODES[mode]) return;
+    this.mode = mode;
+    if (mode !== MODES.PLAY) this.stats.consecutiveErrors = 0;
+    this.ui.setMode(mode);
+    this.ui.setErrors(this.stats.consecutiveErrors, CONFIG.rules.maxConsecutiveErrors);
+  }
+
+  resetStats() {
+    this.stats = {
+      score: 0, combo: 0, maxCombo: 0, perfect: 0, good: 0, miss: 0, collision: 0,
+      consecutiveErrors: 0, judged: 0,
+    };
+  }
+
+  get multiplier() {
+    return clamp(1 + Math.floor(this.stats.combo / CONFIG.score.comboPerStep), 1, CONFIG.score.maxMultiplier);
+  }
+
+  get accuracy() {
+    const { perfect, good, judged } = this.stats;
+    if (!judged) return 100;
+    return ((perfect + good * 0.5) / judged) * 100;
+  }
+
+  // ------------------------------------------------------------ carga
+  async loadFile(file) {
+    this.ensureAudioGraph();
+    if (this.ctx.state === 'suspended') { try { await this.ctx.resume(); } catch (e) { /* ignorado */ } }
+
+    this.file = file;
+    this.setState(STATE.LOADING);
+    this.ui.setLoading(0, 'Leyendo archivo…');
+
+    // Reproducción local: nunca se sube nada a un servidor.
+    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+    this.objectUrl = URL.createObjectURL(file);
+    this.audio.src = this.objectUrl;
+    this.audio.load();
+
+    try {
+      const analyzer = new AudioAnalyzer(this.ctx);
+      this.analysis = await analyzer.analyzeFile(file, (p, label) => this.ui.setLoading(p, label));
+    } catch (err) {
+      console.error(err);
+      this.ui.toast(
+        err.code === 'DECODE_FAILED'
+          ? 'No se pudo decodificar el archivo. Prueba con MP3, WAV, OGG o M4A.'
+          : 'Ocurrió un error al analizar la canción.',
+        'error'
+      );
+      this.setState(STATE.MENU);
+      return;
+    }
+
+    this.ui.setLoading(1, 'Generando nivel…');
+    const seed = deriveSeed(file, this.analysis);
+    this.buildLevel(seed);
+
+    if (this.level.usedFallback) {
+      this.ui.toast('Pocos transitorios claros: el nivel se generó sobre una rejilla de tempo estimado.', 'warn');
+    }
+
+    this.setState(STATE.READY);
+    this.ui.setReadyHint('Pulsa COMENZAR o la barra espaciadora', true);
+    this.ui.showCountdown('LISTO');
+  }
+
+  buildLevel(seed) {
+    this.level = generateLevel(this.analysis, seed);
+    this.world.setLevel(this.level, this.analysis);
+    this.resetRun();
+    this.ui.setSongInfo({
+      name: this.file.name,
+      format: (this.file.type || '').replace('audio/', '').toUpperCase() || this.file.name.split('.').pop().toUpperCase(),
+      duration: this.analysis.duration,
+      bpm: this.analysis.bpm,
+      confidence: this.analysis.bpmConfidence,
+      eventCount: this.level.stats.count,
+      difficulty: this.level.stats.difficulty,
+      seed: this.level.seed.toString(16).toUpperCase(),
+    });
+  }
+
+  resetRun() {
+    this.resetStats();
+    this.judgeCursor = 0;
+    this._prevTime = 0;
+    if (this.level) {
+      this.level.events.forEach((e) => {
+        e.pressed = false; e.pressAction = null; e.delta = 0;
+        e.collided = false; e.resolved = false; e.quality = null; e.fxT = 0;
+      });
+    }
+    this.world.resetRun();
+    this.player.reset();
+    this.clock.reset();
+    this.ui.setScore(0, 0, 1, 100);
+    this.ui.setErrors(0, CONFIG.rules.maxConsecutiveErrors);
+    this.ui.setProgress(0, this.analysis ? this.analysis.duration : 0);
+  }
+
+  // --------------------------------------------------------- controles
+  play() {
+    if (!this.level) return;
+    if (this.state === STATE.PAUSED) {
+      this.clock.reset();
+      this.audio.play().catch(() => this.ui.toast('El navegador bloqueó la reproducción. Vuelve a pulsar PLAY.', 'warn'));
+      this.setState(STATE.PLAYING);
+      return;
+    }
+    if (this.state === STATE.READY) { this.beginCountdown(); return; }
+    if (this.state === STATE.GAME_OVER || this.state === STATE.FINISHED) { this.restart(); }
+  }
+
+  beginCountdown() {
+    this.countdown = CONFIG.rules.countdown;
+    this.countdownLabel = '';
+    this.countdownActive = true;
+    this.ui.setReadyHint('', false);
+    this.setState(STATE.READY);
+    this.primePlayback();
+  }
+
+  cancelCountdown() {
+    this.countdownActive = false;
+    this.countdown = -1;
+    this.countdownLabel = '';
+  }
+
+  /**
+   * Desbloquea el elemento de audio dentro del gesto del usuario. play() se
+   * llamará tres segundos después, ya fuera del clic, y algunos navegadores
+   * lo rechazan si el elemento no se ha activado antes. Se hace en silencio.
+   */
+  primePlayback() {
+    try {
+      this.audio.muted = true;
+      const p = this.audio.play();
+      const finish = () => {
+        if (this.state === STATE.READY) {
+          this.audio.pause();
+          try { this.audio.currentTime = 0; } catch (e) { /* aún sin metadatos */ }
+        }
+        this.audio.muted = false;
+      };
+      if (p && p.then) p.then(finish).catch(() => { this.audio.muted = false; });
+      else finish();
+    } catch (e) {
+      this.audio.muted = false;
+    }
+  }
+
+  pause() {
+    if (this.state !== STATE.PLAYING) return;
+    this.audio.pause();
+    this.setState(STATE.PAUSED);
+  }
+
+  stop() {
+    this.audio.pause();
+    this.audio.currentTime = 0;
+    this.cancelCountdown();
+    this.resetRun();
+    this.setState(STATE.READY);
+    this.ui.setReadyHint('Pulsa COMENZAR o la barra espaciadora', true);
+    this.ui.showCountdown('LISTO');
+  }
+
+  restart() {
+    if (!this.level) return;
+    this.cancelCountdown();
+    this.audio.pause();
+    this.audio.currentTime = 0;
+    this.resetRun();
+    this.setState(STATE.READY);
+    this.beginCountdown();
+  }
+
+  regenerate() {
+    if (!this.analysis) return;
+    const seed = (Math.imul(this.level.seed, 1664525) + 1013904223) >>> 0;
+    this.cancelCountdown();
+    this.audio.pause();
+    this.audio.currentTime = 0;
+    this.buildLevel(seed);
+    this.setState(STATE.READY);
+    this.ui.setReadyHint('Nivel regenerado. Pulsa COMENZAR', true);
+    this.ui.showCountdown('LISTO');
+    this.ui.toast('Nuevo trazado generado con otra semilla.', 'info');
+  }
+
+  finish() {
+    this.setState(STATE.FINISHED);
+    this.audio.pause();
+    this.ui.showFinished(this.summary());
+  }
+
+  gameOver() {
+    this.setState(STATE.GAME_OVER);
+    this.audio.pause();
+    this.world.addShake(1.2);
+    this.ui.showGameOver(this.summary());
+  }
+
+  summary() {
+    return {
+      score: this.stats.score,
+      accuracy: this.accuracy,
+      maxCombo: this.stats.maxCombo,
+      perfect: this.stats.perfect,
+      good: this.stats.good,
+      miss: this.stats.miss,
+      collision: this.stats.collision,
+      song: this.file ? this.file.name : '—',
+    };
+  }
+
+  // ------------------------------------------------------------ juicio
+  currentTime() {
+    return this.clock.update() + CONFIG.timing.offset;
+  }
+
+  onAction(action) {
+    // Entrada humana. En modo AUTO el teclado no interviene, pero la demo
+    // llama a pressAction() —el MISMO camino— sin ningún privilegio.
+    if (this.mode === MODES.AUTO && this.state === STATE.PLAYING) return;
+    this.pressAction(action);
+  }
+
+  /**
+   * Punto de entrada único de cualquier controlador (teclado, táctil o demo).
+   * Sólo registra la pulsación y anima la nave: NO puntúa. El veredicto se
+   * emite más tarde, cuando el obstáculo ha pasado físicamente por la nave.
+   */
+  pressAction(action, atTime) {
+    if (this.state === STATE.READY && !this.countdownActive) { this.play(); return; }
+    if (this.state !== STATE.PLAYING) return;
+
+    this.player.trigger(action);
+    this.ui.pulseAction(action);
+
+    const now = atTime !== undefined ? atTime : this.currentTime();
+    const win = CONFIG.timing.miss;
+    const events = this.level.events;
+
+    let best = null, bestDt = Infinity;
+    for (let i = this.judgeCursor; i < events.length; i++) {
+      const ev = events[i];
+      if (ev.time - now > win) break;
+      if (ev.resolved || ev.pressed) continue;
+      const dt = now - ev.time;
+      if (Math.abs(dt) <= win && Math.abs(dt) < Math.abs(bestDt)) { best = ev; bestDt = dt; }
+    }
+    if (!best) return; // pulsación al aire: mueve la nave, no penaliza
+
+    best.pressed = true;
+    best.pressAction = action;
+    best.delta = bestDt;
+    this.ui.showInput(bestDt);
+  }
+
+  /** Modo AUTO: pulsa en el instante del pulso, como haría un jugador exacto. */
+  autoPlay(now) {
+    const events = this.level.events;
+    for (let i = this.judgeCursor; i < events.length; i++) {
+      const ev = events[i];
+      if (ev.time > now) break;
+      if (ev.resolved || ev.pressed) continue;
+      if (now - ev.time > CONFIG.timing.miss) continue;
+      this.pressAction(ev.action, now);
+    }
+  }
+
+  /**
+   * Colisión real: interseca la caja de la nave con las cajas sólidas de los
+   * obstáculos que están cruzando su plano. El barrido (`sweep`) cubre el
+   * espacio recorrido desde el frame anterior, de modo que ningún obstáculo
+   * puede atravesar la nave entre dos fotogramas por baja tasa de refresco.
+   */
+  updateCollisions(prev, now) {
+    const events = this.level.events;
+    const half = contactHalfTime();
+    const speed = CONFIG.world.speed;
+    const sweep = Math.max(0, now - prev) * speed;
+
+    const pose = this.player.pose;
+    const shipTrack = this.world.sampleTrack(now);
+    setBox(this._shipBox,
+      shipTrack.x + pose.x, shipTrack.y + pose.y, 0,
+      pose.halfX, pose.halfY, pose.halfZ);
+
+    for (let i = this.judgeCursor; i < events.length; i++) {
+      const ev = events[i];
+      const arrival = arrivalOf(ev);
+      if (arrival - half > now) break;
+      if (ev.resolved || arrival + half < prev) continue;
+
+      const s = this.world.sampleTrack(arrival);
+      const z = -(arrival - now) * speed;
+      for (const solid of SOLIDS[ev.action]) {
+        fillSolidBox(this._solidBox, solid, s.x, s.y, z, sweep);
+        if (this._solidBox.intersectsBox(this._shipBox)) { ev.collided = true; break; }
+      }
+    }
+  }
+
+  /**
+   * Veredicto final. El orden importa: la colisión manda sobre cualquier
+   * precisión de tiempo, así que es imposible obtener PERFECT habiendo tocado
+   * un obstáculo.
+   */
+  evaluate(ev) {
+    if (ev.collided) return 'collision';
+    if (!ev.pressed || ev.pressAction !== ev.action) return 'miss';
+    const dt = Math.abs(ev.delta);
+    if (dt <= CONFIG.timing.perfect) return 'perfect';
+    if (dt <= CONFIG.timing.good) return 'good';
+    return 'miss';
+  }
+
+  /** Cierra los eventos cuyo obstáculo ya terminó de cruzar la nave. */
+  resolveEvents(now) {
+    const events = this.level.events;
+    const half = contactHalfTime();
+    while (this.judgeCursor < events.length) {
+      const ev = events[this.judgeCursor];
+      if (ev.resolved) { this.judgeCursor++; continue; }
+      if (arrivalOf(ev) + half > now) break;
+      this.resolve(ev);
+      this.judgeCursor++;
+      if (this.state === STATE.GAME_OVER) return;
+    }
+  }
+
+  resolve(ev) {
+    const quality = this.evaluate(ev);
+    ev.resolved = true;
+    ev.quality = quality;
+    ev.fxT = 0;
+    this.stats.judged++;
+
+    const p = this.player.group.position;
+    const failed = quality === 'miss' || quality === 'collision';
+
+    if (failed) {
+      if (quality === 'collision') this.stats.collision++; else this.stats.miss++;
+      this.stats.combo = 0;
+      this.stats.consecutiveErrors++;
+      this.player.feedback(quality);
+      this.world.addShake(quality === 'collision' ? 0.9 : 0.4);
+      this.world.burst(p.x, p.y, p.z, quality === 'collision' ? 14 : 6, 5,
+        quality === 'collision' ? CONFIG.colors.collision : CONFIG.colors.miss);
+    } else {
+      this.stats.consecutiveErrors = 0;
+      this.stats.combo++;
+      this.stats.maxCombo = Math.max(this.stats.maxCombo, this.stats.combo);
+      this.stats.score += (quality === 'perfect' ? CONFIG.score.perfect : CONFIG.score.good) * this.multiplier;
+      if (quality === 'perfect') this.stats.perfect++; else this.stats.good++;
+      this.player.feedback(quality);
+      this.world.burst(p.x, p.y, p.z, quality === 'perfect' ? 12 : 6,
+        quality === 'perfect' ? 5 : 3,
+        quality === 'perfect' ? CONFIG.colors.perfect : CONFIG.colors.action[ev.action]);
+    }
+
+    this.ui.showJudge(quality, ev.pressed ? ev.delta : null, this.failReason(ev, quality));
+    this.ui.setScore(this.stats.score, this.stats.combo, this.multiplier, this.accuracy);
+    this.ui.setErrors(this.stats.consecutiveErrors, CONFIG.rules.maxConsecutiveErrors);
+
+    if (this.mode === MODES.PLAY &&
+        this.stats.consecutiveErrors > CONFIG.rules.maxConsecutiveErrors) this.gameOver();
+  }
+
+  /** Explica por qué se perdió la acción: sin esto el jugador no aprende. */
+  failReason(ev, quality) {
+    if (quality === 'collision') {
+      if (!ev.pressed) return 'sin reacción';
+      if (ev.pressAction !== ev.action) return 'acción equivocada';
+      return 'fuera de tiempo';
+    }
+    if (quality === 'miss') {
+      if (!ev.pressed) return 'sin pulsar';
+      if (ev.pressAction !== ev.action) return 'acción equivocada';
+      return 'fuera de ventana';
+    }
+    return '';
+  }
+
+  /**
+   * Un paso completo de simulación. ORDEN CRÍTICO: primero se pulsa, después
+   * se mueve la nave, y sólo entonces se mide la colisión con la pose ya
+   * actualizada; por último se resuelve. Evaluar antes de mover haría que el
+   * veredicto usara la posición del frame anterior, que es exactamente el
+   * fallo del "choca pero saca Perfect".
+   *
+   * Lo llaman por igual el bucle de render y las pruebas automatizadas, así
+   * que no existe una ruta de simulación alternativa.
+   */
+  step(now, dt, pulse = 0) {
+    if (this.mode === MODES.AUTO) this.autoPlay(now);
+    const track = this.world.sampleTrack(now);
+    this.player.update(dt, now, track, pulse);
+    this.updateCollisions(this._prevTime || now, now);
+    this.resolveEvents(now);
+    this._prevTime = now;
+  }
+
+  /** Próximo evento pendiente, para el indicador de anticipación de la UI. */
+  peekNext(now) {
+    const events = this.level.events;
+    for (let i = this.judgeCursor; i < events.length; i++) {
+      const ev = events[i];
+      if (ev.resolved || ev.pressed) continue;
+      if (ev.time >= now - CONFIG.timing.good) return ev;
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------- bucle
+  loop(ts) {
+    requestAnimationFrame(this.loop);
+    const dt = clamp((ts - this.lastFrame) / 1000, 0, 0.1);
+    this.lastFrame = ts;
+
+    // Cuenta regresiva antes de arrancar la música
+    // La bandera, y no el signo del contador, decide si la cuenta sigue viva:
+    // con `countdown >= 0` el bloque dejaba de ejecutarse justo al llegar a
+    // "GO" y la partida no arrancaba nunca.
+    if (this.state === STATE.READY && this.countdownActive) {
+      this.countdown -= dt;
+      const n = Math.max(1, Math.ceil(this.countdown));
+      const label = this.countdown <= 0 ? 'GO' : String(n);
+      if (label !== this.countdownLabel) {
+        this.countdownLabel = label;
+        this.ui.showCountdown(label);
+      }
+      if (this.countdown <= -0.35) {
+        this.cancelCountdown();
+        this.startPlayback();
+      }
+    }
+
+    let now = 0;
+    const playing = this.state === STATE.PLAYING;
+    if (playing) now = this.currentTime();
+    else if (this.analysis) now = this.audio.currentTime;
+
+    const pulse = this.analysis && playing ? this.analysis.lowAt(now) : 0.08;
+    const energy = this.analysis ? this.analysis.energyAt(now) : 0;
+    const step = this.state === STATE.PAUSED ? 0 : dt;
+
+    if (this.level) {
+      if (playing) {
+        this.step(now, step, pulse);
+        if (this.analysis && now >= this.analysis.duration - 0.03) this.finish();
+      } else {
+        this.player.update(step, now, this.world.sampleTrack(now), pulse);
+      }
+      this.world.update(now, step, { pulse, energy });
+    } else {
+      this.world.update(0, dt, { pulse: 0.05, energy: 0 });
+    }
+
+    if (this.analysis) {
+      this.ui.setProgress(now, this.analysis.duration);
+      this.ui.setEnergy(energy);
+      if (playing) this.ui.setNextAction(this.peekNext(now), now);
+    }
+    this.ui.drawVisualizer();
+  }
+
+  startPlayback() {
+    this.audio.currentTime = 0;
+    this.clock.reset();
+    const p = this.audio.play();
+    if (p && p.catch) {
+      p.catch(() => {
+        this.ui.toast('El navegador bloqueó la reproducción automática. Pulsa PLAY.', 'warn');
+        this.setState(STATE.READY);
+        this.ui.setReadyHint('Pulsa COMENZAR', true);
+      });
+    }
+    this.setState(STATE.PLAYING);
+  }
+}
+
+/* ===== main.js ===== */
+/**
+ * main.js
+ * Arranque de la aplicación: conecta la UI, el teclado y el motor del juego.
+ */
+
+
+
+function boot() {
+  if (typeof THREE === 'undefined') {
+    document.getElementById('load-label').textContent =
+      'No se pudo cargar Three.js. Revisa la conexión o usa la copia local de la librería.';
+    return;
+  }
+
+  const canvas = document.getElementById('game-canvas');
+  const audio = document.getElementById('audio');
+
+  let game = null;
+
+  const ui = new UI({
+    onFile: (file) => game.loadFile(file),
+    onPlay: () => game.play(),
+    onPause: () => game.pause(),
+    onStop: () => game.stop(),
+    onRestart: () => game.restart(),
+    onRegenerate: () => game.regenerate(),
+    onMode: (m) => game.setMode(m),
+    onAction: (a) => game.onAction(a),
+  });
+
+  game = new Game({ canvas, audio, ui });
+
+  // ---- Teclado ----
+  // WASD como esquema principal. Se mantienen 1-4 como alias para quien
+  // prefiera el teclado numérico o venga de la versión anterior.
+  const actionKeys = {
+    KeyA: 0, KeyD: 1, KeyW: 2, KeyS: 3,
+    Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3,
+    Numpad1: 0, Numpad2: 1, Numpad3: 2, Numpad4: 3,
+  };
+
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    const target = e.target;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+
+    if (e.code in actionKeys) {
+      e.preventDefault();
+      game.onAction(actionKeys[e.code]);
+      return;
+    }
+
+    switch (e.code) {
+      case 'Space':
+        e.preventDefault();
+        if (game.state === STATE.PLAYING) game.pause();
+        else game.play();
+        break;
+      case 'KeyR':
+        game.restart();
+        break;
+      case 'Escape':
+        if (game.state === STATE.PLAYING) game.pause();
+        break;
+    }
+  });
+
+  // Pausa automática al perder el foco de la pestaña
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && game.state === STATE.PLAYING) game.pause();
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (game.objectUrl) URL.revokeObjectURL(game.objectUrl);
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
+
+</script>
+</body>
+</html>
